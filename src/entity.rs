@@ -150,7 +150,7 @@ impl bn::Entity for En {
             let mut ch = self.ch;
             // Highlight if about to act.
             if !self.is_player
-                && (unsafe { GLOBAL_TIME % self.delay as u32 == 1 } || self.delay == 1)
+                && (unsafe { GLOBAL_TIME % self.delay as u32 == (self.delay - 1) as u32 } || self.delay == 1)
                 && self.vel.is_none()
             {
                 ch = ch.on_red();
@@ -242,45 +242,53 @@ impl bn::Entity for En {
         let do_attack =
             |cmd: &mut bn::Commands<'_, Self>, dir: Point, is_ranged: bool, atk_idx: usize| {
                 let mut positions = Vec::new();
-                let dmg_inst = if is_ranged {
+                let effects: &[Effect] = if is_ranged {
                     let atk = &self.atks.ranged_atks[atk_idx];
                     positions.push(pos + dir);
-                    atk.effect
+                    &atk.effects
                 } else {
                     let atk = &self.atks.melee_atks[&dir][atk_idx];
                     for (p, v) in atk.fx.iter() {
                         cmd.queue(bn::Cmd::new_on(*p + pos).create_effect(v.clone()));
                     }
                     positions.extend(atk.place.iter().map(|p| *p + pos));
-                    atk.effect
+                    &atk.effects
                 };
 
                 for target in positions.into_iter() {
-                    let hit = rand::random_bool(dmg_inst.acc);
-
-                    // Draw line with closure for ranged attacks and display hit_fx if necessary.
-                    if is_ranged {
-                        let atk = &self.atks.ranged_atks[atk_idx];
-                        let mut line: Vec<Point> = Point::plot_line(pos, target).skip(1).collect();
-                        line.push(target);
-                        for (p, v) in (atk.line_fx)(hit, line) {
-                            cmd.queue(bn::Cmd::new_on(p).create_effect(v));
-                        }
-                    }
-
-                    if hit {
-                        // Apply damage.
-                        cmd.queue(bn::Cmd::new_on(target).modify_entity(Box::new(
-                            move |e: &mut En| {
-                                e.apply_dmg(dmg_inst);
-                            },
-                        )));
-                    } else if !is_ranged {
-                        cmd.queue(
-                            bn::Cmd::new_on(target)
-                                .create_effect(self.atks.melee_atks[&dir][atk_idx].miss_fx.clone()),
-                        );
-                    }
+					for ef in effects {
+						match ef {
+							Effect::DoDmg(dmg_inst) => {
+								let dmg_inst = *dmg_inst;
+								let hit = rand::random_bool(dmg_inst.acc);
+								
+								// Draw line with closure for ranged attacks and display hit_fx if necessary.
+								if is_ranged {
+									let atk = &self.atks.ranged_atks[atk_idx];
+									let mut line: Vec<Point> = Point::plot_line(pos, target).skip(1).collect();
+									line.push(target);
+									for (p, v) in (atk.line_fx)(hit, line) {
+										cmd.queue(bn::Cmd::new_on(p).create_effect(v));
+									}
+								}
+								
+								if hit {
+									// Apply damage.
+									cmd.queue(bn::Cmd::new_on(target).modify_entity(Box::new(
+										move |e: &mut En| {
+											e.apply_dmg(dmg_inst);
+										},
+									)));
+								} else if !is_ranged {
+									cmd.queue(
+										bn::Cmd::new_on(target)
+											.create_effect(self.atks.melee_atks[&dir][atk_idx].miss_fx.clone()),
+									);
+								}
+							}
+							Effect::Other(clos) => cmd.queue_many(clos(pos, target, &*cmd)),
+						}
+					}
                 }
             };
 
@@ -322,6 +330,7 @@ impl bn::Entity for En {
                                     for (n, atk_pos) in atk.place.iter().enumerate() {
                                         if let Some(e) = cmd.get_ent(*atk_pos + pos)
                                             && !e.is_player
+											&& !e.dormant
                                         {
                                             do_attack(cmd, unsafe { DIR }, false, n);
                                             acted = true;
@@ -467,6 +476,7 @@ impl bn::Entity for En {
                             cmd.queue(bn::Cmd::new_on(p).modify_entity(Box::new(
                                 move |e: &mut En| {
                                     e.dormant = false;
+									e.acted = true;
                                 },
                             )));
                             unsafe { ENEMIES_REMAINING += 1 };

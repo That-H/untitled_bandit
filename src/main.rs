@@ -134,21 +134,34 @@ fn main() {
     let total = Point::ORIGIN.get_all_adjacent_diagonal();
 
     // Default attack pattern.
-    let default_atks = AtkPat::from_atks(MeleeAtk::bulk_new(
-        DmgInst::dmg(1, 1.0),
+    let default_atks = AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
+        vec![Effect::DoDmg(DmgInst::dmg(1, 1.0))],
         style::Color::Red,
         7,
         Vfx::new_opaque('?'.stylize(), 7),
-        4,
+        FOUR_POS_ATK.iter()
+    ));
+	
+	// Default attack pattern with double damage and knockback.
+    let heavy_default_atks = AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
+        vec![Effect::DoDmg(DmgInst::dmg(2, 1.0)), Effect::Other(|from, to, map| {
+			let mut cmds = Vec::new();
+			cmds.push(bn::Cmd::new_on(to).modify_entity(Box::new(move |e: &mut En| e.vel = Some(to - from))));
+			cmds
+		})],
+        style::Color::Red,
+        7,
+        Vfx::new_opaque('?'.stylize(), 7),
+        THICC_FOUR_POS_ATK.iter()
     ));
 
     // Default attack pattern with diagonals included.
-    let diagonal_atks = AtkPat::from_atks(MeleeAtk::bulk_new(
-        DmgInst::dmg(1, 1.0),
+    let diagonal_atks = AtkPat::from_atks(MeleeAtk::bulk_new::<8>(
+        vec![Effect::DoDmg(DmgInst::dmg(1, 1.0))],
         style::Color::Red,
         7,
         Vfx::new_opaque('?'.stylize(), 7),
-        8,
+        EIGHT_POS_ATK.iter()
     ));
 
     // Long default attack.
@@ -180,6 +193,13 @@ fn main() {
             ch: 'l'.stylize(),
             atks: spear.clone(),
         },
+		EntityTemplate {
+            max_hp: 4,
+            delay: 3,
+            movement: manhattan.clone(),
+            ch: 'h'.stylize(),
+            atks: heavy_default_atks.clone(),
+        },
         EntityTemplate {
             max_hp: 2,
             delay: 2,
@@ -189,7 +209,7 @@ fn main() {
         },
     ];
 
-    let costs = [10, 25, 40];
+    let costs = [10, 25, 35, 40];
 
     // Create the player.
     let pl = En::new(
@@ -329,7 +349,11 @@ fn main() {
 			for atks in pl.atks.melee_atks.values() {
 				for atk in atks.iter() {
 					for pos in atk.place.iter() {
-						damages.insert(*pos, atk.effect);
+						for ef in atk.effects.iter() {
+							if let Effect::DoDmg(dmg_inst) = ef {
+								damages.insert(*pos, *dmg_inst);
+							}
+						}
 					}
 				}
 			}

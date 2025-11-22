@@ -3,16 +3,33 @@ use crate::{Point, Vfx};
 use crossterm::style;
 use std::collections::HashMap;
 
-const FOUR_POS_ATK: [char; 4] = ['-', '|', '-', '|'];
-const EIGHT_POS_ATK: [char; 8] = ['/', '-', '\\', '|', '|', '\\', '-', '/'];
+pub const THICC_FOUR_POS_ATK: [char; 4] = ['═', '║', '═', '║'];
+pub const FOUR_POS_ATK: [char; 4] = ['-', '|', '-', '|'];
+pub const EIGHT_POS_ATK: [char; 8] = ['/', '-', '\\', '|', '|', '\\', '-', '/'];
 
 mod damage;
 pub use damage::*;
 
+use crate::bn;
+
+type OtherEf = fn(Point, Point, &bn::Map<super::entity::En>) -> Vec<bn::Cmd<super::entity::En>>;
+
+/// Some effect that can occur as a result of an attack.
+#[derive(Clone, Debug)]
+pub enum Effect {
+	/// Apply the damage instance to the entity.
+	DoDmg(DmgInst),
+	/// Do something else. Arguments are (in that order):
+	/// - Where you attack from
+	/// - Where you attack
+	/// - Map in which the attack takes place
+	Other(OtherEf)
+}
+
 #[derive(Clone, Debug)]
 pub struct MeleeAtk {
     /// Damage dealt.
-    pub effect: DmgInst,
+    pub effects: Vec<Effect>,
     /// Where it affects relative to some position.
     pub place: Vec<Point>,
     /// Each effect that will be displayed relative to some position. Will be overwritten by
@@ -24,9 +41,9 @@ pub struct MeleeAtk {
 
 impl MeleeAtk {
     /// Create a new melee attack.
-    pub fn new(effect: DmgInst, place: Vec<Point>, fx: Vec<(Point, Vfx)>, miss_fx: Vfx) -> Self {
+    pub fn new(effects: Vec<Effect>, place: Vec<Point>, fx: Vec<(Point, Vfx)>, miss_fx: Vfx) -> Self {
         Self {
-            effect,
+            effects,
             place,
             fx,
             miss_fx,
@@ -35,43 +52,42 @@ impl MeleeAtk {
 
     /// Create amount attacks with the given vfx parameters. An amount of four leads to
     /// the four orthogonally adjacent positions being attackable, and an amount of eight
-    /// also includes diagonally adjacent positions. Each character used is one of -, |,
-    /// / or \\ to represent the direction used.
-    pub fn bulk_new(
-        effect: DmgInst,
+    /// also includes diagonally adjacent positions.
+    pub fn bulk_new<'a, const N: usize>(
+        effects: Vec<Effect>,
         clr: style::Color,
         frames: usize,
         miss_fx: Vfx,
-        amount: u8,
+        chars: impl IntoIterator<Item = &'a char>,
     ) -> Vec<Self> {
         let mut bulk = Vec::new();
         let get_atk = |pos: Point, ch: char| {
             MeleeAtk::new(
-                effect,
+                effects.clone(),
                 vec![pos],
                 vec![(pos, Vfx::opaque_with_clr(ch, clr, frames))],
                 miss_fx.clone(),
             )
         };
 
-        if amount == 4 {
+        if N == 4 {
             for (pos, ch) in Point::ORIGIN
                 .get_all_adjacent()
                 .into_iter()
-                .zip(FOUR_POS_ATK.iter())
+                .zip(chars.into_iter())
             {
                 bulk.push(get_atk(pos, *ch));
             }
-        } else if amount == 8 {
+        } else if N == 8 {
             for (pos, ch) in Point::ORIGIN
                 .get_all_adjacent_diagonal()
                 .into_iter()
-                .zip(EIGHT_POS_ATK.iter())
+                .zip(chars.into_iter())
             {
                 bulk.push(get_atk(pos, *ch));
             }
         } else {
-            panic!("Expected to create 4 or 8 attacks, but got {amount}");
+            panic!("Expected to create 4 or 8 attacks, but got {N}");
         }
 
         bulk
@@ -88,7 +104,7 @@ type CalcLineFx = fn(bool, Vec<Point>) -> Vec<(Point, Vfx)>;
 #[derive(Clone)]
 pub struct RangedAtk {
     /// Damage dealt.
-    pub effect: DmgInst,
+    pub effects: Vec<Effect>,
     /// Maximum distance from which the attack can be used.
     pub range: u32,
     /// Each effect that will be displayed relative to some position.
@@ -100,13 +116,13 @@ pub struct RangedAtk {
 impl RangedAtk {
     /// Create a new ranged attack.
     pub fn new(
-        effect: DmgInst,
+        effects: Vec<Effect>,
         range: u32,
         fx: Vec<(Point, Vfx)>,
         line_fx: Box<CalcLineFx>,
     ) -> Self {
         Self {
-            effect,
+            effects,
             range,
             fx,
             line_fx,
