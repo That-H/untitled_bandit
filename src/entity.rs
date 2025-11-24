@@ -18,6 +18,9 @@ pub static mut ENEMIES_REMAINING: usize = 0;
 /// Number of actions taken by the player.
 pub static mut GLOBAL_TIME: u32 = 0;
 
+const WALL_SENTRY_CHAR: char = '█';
+const WALL_SENTRY_CLR: style::Color = style::Color::Yellow;
+
 /// Describes the way in which an entity differs from a normal entity.
 #[derive(Clone, Copy)]
 pub enum Special {
@@ -169,15 +172,15 @@ impl bn::Entity for En {
         if self.is_dead()
             && let Special::Not = self.special
         {
-            cmd.queue(bn::Cmd::new_here().delete_entity());
             if self.is_player {
                 unsafe { DEAD = true }
             } else {
                 unsafe { ENEMIES_REMAINING -= 1 }
+				cmd.queue(bn::Cmd::new_here().delete_entity());
             }
             return;
         }
-
+		
         // Special entities
         match self.special {
             Special::WallSentry => {
@@ -320,6 +323,7 @@ impl bn::Entity for En {
         } else {
             if self.is_player {
                 let cur_nx = pos + unsafe { DIR };
+				// Player does something based on the ACTION global, which is set in the main loop.
                 match unsafe { ACTION } {
                     ActionType::TryMove => {
                         if !cmd.get_map(cur_nx).unwrap().blocking {
@@ -367,7 +371,9 @@ impl bn::Entity for En {
                             }
                         }
                     }
-                    ActionType::Wait => acted = true,
+                    ActionType::Wait => { 
+						acted = true;
+					}
                 }
 
                 if acted {
@@ -375,7 +381,6 @@ impl bn::Entity for En {
                     update_entities(cmd);
                 }
             } else {
-                acted = true;
                 let mut attack = false;
                 let mut range = false;
                 let mut idx = 0;
@@ -415,11 +420,11 @@ impl bn::Entity for En {
                     do_attack(cmd, dir, range, idx);
                 }
 
-                if acted {
-                    cmd.queue(
-                        bn::Cmd::new_here().modify_entity(Box::new(|e: &mut En| e.acted = true)),
-                    );
-                }
+				cmd.queue(
+					bn::Cmd::new_here().modify_entity(Box::new(|e: &mut En| { 
+						e.acted = true;
+					})),
+				);
             }
         }
 
@@ -473,7 +478,13 @@ impl bn::Entity for En {
                         if p != pos
                             && let Some(_e) = cmd.get_ent(p)
                         {
-                            cmd.queue(bn::Cmd::new_on(p).modify_entity(Box::new(
+							// Hack to stop the game crashing when an entity is displaced
+							// upon entering the room.
+							let mut e_pos = p;
+							if e_pos == nx {
+								e_pos = unsafe { DIR + e_pos };
+							}
+                            cmd.queue(bn::Cmd::new_on(e_pos).modify_entity(Box::new(
                                 move |e: &mut En| {
                                     e.dormant = false;
 									e.acted = true;
@@ -490,7 +501,7 @@ impl bn::Entity for En {
                                 1,
                                 false,
                                 255,
-                                'x'.yellow(),
+                                WALL_SENTRY_CHAR.with(WALL_SENTRY_CLR),
                                 Special::WallSentry,
                                 Vec::new(),
                                 AtkPat::empty(),

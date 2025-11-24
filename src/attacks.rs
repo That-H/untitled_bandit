@@ -101,7 +101,7 @@ impl MeleeAtk {
 
 type CalcLineFx = fn(bool, Vec<Point>) -> Vec<(Point, Vfx)>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RangedAtk {
     /// Damage dealt.
     pub effects: Vec<Effect>,
@@ -131,7 +131,7 @@ impl RangedAtk {
 }
 
 /// Stores melee and ranged attacks. Associates the melee attacks with a direction.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AtkPat {
     /// Melee attacks.
     pub melee_atks: HashMap<Point, Vec<MeleeAtk>>,

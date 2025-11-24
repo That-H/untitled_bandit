@@ -21,6 +21,8 @@ const TERMINAL_HGT: u16 = 30;
 const WINDOW_WIDTH: u16 = 40;
 const WINDOW_HEIGHT: u16 = 20;
 const ARROWS: [char; 4] = ['↓', '←', '↑', '→'];
+const PLAYER_CHARACTER: char = '@';
+const PLAYER_COLOUR: style::Color = style::Color::Green;
 
 // All constants below describe the index of the window container that
 // the corresponding window is located at, or things about the window.
@@ -142,6 +144,15 @@ fn main() {
         FOUR_POS_ATK.iter()
     ));
 	
+	// Functionally identical to default attacks, but looks different.
+	let weird_default = AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
+        vec![Effect::DoDmg(DmgInst::dmg(1, 1.0))],
+        style::Color::Magenta,
+        7,
+        Vfx::new_opaque('?'.stylize(), 7),
+        ['☼'; 4].iter()
+    ));
+	
 	// Default attack pattern with double damage and knockback.
     let heavy_default_atks = AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
         vec![Effect::DoDmg(DmgInst::dmg(2, 1.0)), Effect::Other(|from, to, map| {
@@ -177,7 +188,45 @@ fn main() {
             }
         }
     }
+	
+	// Pull the target towards self, without damaging them.
+    let mut wizardry = AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
+        vec![Effect::Other(|from, to, map| {
+			let disp = (from - to) / 2;
+			let new = to + disp;
+			let mut cmds = Vec::new();
+			cmds.push(bn::Cmd::new_on(to).move_to(new));
+			unsafe {
+				if PLAYER == to {
+					PLAYER = new;
+				}
+			}
+			cmds
+		})],
+        style::Color::Magenta,
+        7,
+        Vfx::new_opaque('?'.stylize(), 7),
+        FOUR_POS_ATK.iter()
+    ));
 
+    for (_d, atks) in wizardry.melee_atks.iter_mut() {
+        for atk in atks.iter_mut() {
+            let pos = atk.place[0];
+            atk.fx
+                .push((pos * 2, Vfx::new_opaque('*'.magenta(), 7)));
+            for p in atk.place.iter_mut() {
+                *p = *p * 2;
+            }
+        }
+    }
+	
+	// Like wizardry, but with a weird default attack included.
+	let mut wizardry_plus = wizardry.clone();
+	
+	for (k, v) in weird_default.melee_atks.iter() {
+		wizardry_plus.melee_atks.get_mut(&k).unwrap().append(&mut v.clone());
+	}
+	
     let templates = [
         EntityTemplate {
             max_hp: 3,
@@ -186,19 +235,19 @@ fn main() {
             ch: 'e'.stylize(),
             atks: default_atks.clone(),
         },
-        EntityTemplate {
-            max_hp: 2,
-            delay: 1,
-            movement: manhattan.clone(),
-            ch: 'l'.stylize(),
-            atks: spear.clone(),
-        },
 		EntityTemplate {
             max_hp: 4,
             delay: 3,
             movement: manhattan.clone(),
             ch: 'h'.stylize(),
             atks: heavy_default_atks.clone(),
+        },
+		EntityTemplate {
+            max_hp: 2,
+            delay: 1,
+            movement: manhattan.clone(),
+            ch: 'l'.stylize(),
+            atks: spear.clone(),
         },
         EntityTemplate {
             max_hp: 2,
@@ -207,16 +256,23 @@ fn main() {
             ch: 'k'.stylize(),
             atks: diagonal_atks.clone(),
         },
+		EntityTemplate {
+            max_hp: 3,
+            delay: 2,
+            movement: manhattan.clone(),
+            ch: 'w'.stylize(),
+            atks: wizardry_plus.clone(),
+        },
     ];
-
-    let costs = [10, 25, 35, 40];
+	
+    let costs = [10, 25, 35, 40, 50];
 
     // Create the player.
     let pl = En::new(
         9,
         true,
         0,
-        '@'.green(),
+        PLAYER_CHARACTER.with(PLAYER_COLOUR),
         Special::Not,
         total.clone(),
         default_atks.clone(),
@@ -376,7 +432,6 @@ fn main() {
 					}
 					cur_win.data[y].push(ch);
 				}
-				
 			}
 			
             cur_win.outline_with('#'.grey());

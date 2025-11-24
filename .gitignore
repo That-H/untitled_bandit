@@ -1,4 +1,8 @@
-target/
-doc/
+/target/*
+!/target/release/
+/target/release/*
+!/target/release/untitled_bandit.exe
+/doc/
 
-idea.txt
+/dbg.txt
+/idea.txt
