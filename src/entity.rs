@@ -149,11 +149,12 @@ impl bn::Entity for En {
     type Vfx = Vfx;
 
     fn repr(&self) -> <<Self as Entity>::Tile as bn::Tile>::Repr {
-        let ch = if !self.dormant {
+        if !self.dormant {
             let mut ch = self.ch;
             // Highlight if about to act.
             if !self.is_player
-                && (unsafe { GLOBAL_TIME % self.delay as u32 == (self.delay - 1) as u32 } || self.delay == 1)
+                && (unsafe { GLOBAL_TIME % self.delay as u32 == (self.delay - 1) as u32 }
+                    || self.delay == 1)
                 && self.vel.is_none()
             {
                 ch = ch.on_red();
@@ -161,8 +162,7 @@ impl bn::Entity for En {
             ch
         } else {
             ' '.stylize()
-        };
-        ch
+        }
     }
 
     fn update(&self, cmd: &mut bn::Commands<'_, Self>, pos: Point)
@@ -176,11 +176,11 @@ impl bn::Entity for En {
                 unsafe { DEAD = true }
             } else {
                 unsafe { ENEMIES_REMAINING -= 1 }
-				cmd.queue(bn::Cmd::new_here().delete_entity());
+                cmd.queue(bn::Cmd::new_here().delete_entity());
             }
             return;
         }
-		
+
         // Special entities
         match self.special {
             Special::WallSentry => {
@@ -259,39 +259,39 @@ impl bn::Entity for En {
                 };
 
                 for target in positions.into_iter() {
-					for ef in effects {
-						match ef {
-							Effect::DoDmg(dmg_inst) => {
-								let dmg_inst = *dmg_inst;
-								let hit = rand::random_bool(dmg_inst.acc);
-								
-								// Draw line with closure for ranged attacks and display hit_fx if necessary.
-								if is_ranged {
-									let atk = &self.atks.ranged_atks[atk_idx];
-									let mut line: Vec<Point> = Point::plot_line(pos, target).skip(1).collect();
-									line.push(target);
-									for (p, v) in (atk.line_fx)(hit, line) {
-										cmd.queue(bn::Cmd::new_on(p).create_effect(v));
-									}
-								}
-								
-								if hit {
-									// Apply damage.
-									cmd.queue(bn::Cmd::new_on(target).modify_entity(Box::new(
-										move |e: &mut En| {
-											e.apply_dmg(dmg_inst);
-										},
-									)));
-								} else if !is_ranged {
-									cmd.queue(
-										bn::Cmd::new_on(target)
-											.create_effect(self.atks.melee_atks[&dir][atk_idx].miss_fx.clone()),
-									);
-								}
-							}
-							Effect::Other(clos) => cmd.queue_many(clos(pos, target, &*cmd)),
-						}
-					}
+                    for ef in effects {
+                        match ef {
+                            Effect::DoDmg(dmg_inst) => {
+                                let dmg_inst = *dmg_inst;
+                                let hit = rand::random_bool(dmg_inst.acc);
+
+                                // Draw line with closure for ranged attacks and display hit_fx if necessary.
+                                if is_ranged {
+                                    let atk = &self.atks.ranged_atks[atk_idx];
+                                    let mut line: Vec<Point> =
+                                        Point::plot_line(pos, target).skip(1).collect();
+                                    line.push(target);
+                                    for (p, v) in (atk.line_fx)(hit, line) {
+                                        cmd.queue(bn::Cmd::new_on(p).create_effect(v));
+                                    }
+                                }
+
+                                if hit {
+                                    // Apply damage.
+                                    cmd.queue(bn::Cmd::new_on(target).modify_entity(Box::new(
+                                        move |e: &mut En| {
+                                            e.apply_dmg(dmg_inst);
+                                        },
+                                    )));
+                                } else if !is_ranged {
+                                    cmd.queue(bn::Cmd::new_on(target).create_effect(
+                                        self.atks.melee_atks[&dir][atk_idx].miss_fx.clone(),
+                                    ));
+                                }
+                            }
+                            Effect::Other(clos) => cmd.queue_many(clos(pos, target, &*cmd)),
+                        }
+                    }
                 }
             };
 
@@ -320,112 +320,107 @@ impl bn::Entity for En {
                     e.acted = true;
                 })),
             );
-        } else {
-            if self.is_player {
-                let cur_nx = pos + unsafe { DIR };
-				// Player does something based on the ACTION global, which is set in the main loop.
-                match unsafe { ACTION } {
-                    ActionType::TryMove => {
-                        if !cmd.get_map(cur_nx).unwrap().blocking {
-                            // Check if there are any attacks that hit something in this direction,
-                            // and if so, do the first one.
-                            if let Some(atks) = self.atks.melee_atks.get(&unsafe { DIR }) {
-                                'outer: for atk in atks.iter() {
-                                    for (n, atk_pos) in atk.place.iter().enumerate() {
-                                        if let Some(e) = cmd.get_ent(*atk_pos + pos)
-                                            && !e.is_player
-											&& !e.dormant
-                                        {
-                                            do_attack(cmd, unsafe { DIR }, false, n);
-                                            acted = true;
-                                            break 'outer;
-                                        }
+        } else if self.is_player {
+            let cur_nx = pos + unsafe { DIR };
+            // Player does something based on the ACTION global, which is set in the main loop.
+            match unsafe { ACTION } {
+                ActionType::TryMove => {
+                    if !cmd.get_map(cur_nx).unwrap().blocking {
+                        // Check if there are any attacks that hit something in this direction,
+                        // and if so, do the first one.
+                        if let Some(atks) = self.atks.melee_atks.get(&unsafe { DIR }) {
+                            'outer: for atk in atks.iter() {
+                                for (n, atk_pos) in atk.place.iter().enumerate() {
+                                    if let Some(e) = cmd.get_ent(*atk_pos + pos)
+                                        && !e.is_player
+                                        && !e.dormant
+                                    {
+                                        do_attack(cmd, unsafe { DIR }, false, n);
+                                        acted = true;
+                                        break 'outer;
                                     }
-                                }
-                            }
-
-                            // If there has been no action, move if there is no entity.
-                            if !acted {
-                                let no_ent = cmd.get_ent(cur_nx).is_none();
-                                if no_ent || unsafe { ENEMIES_REMAINING == 0 } {
-                                    // Displace the entity if it generates next to a door.
-                                    if !no_ent {
-                                        cmd.queue(
-                                            bn::Cmd::new_on(cur_nx)
-                                                .move_to(cur_nx + unsafe { DIR }),
-                                        );
-                                    }
-                                    nx = Some(cur_nx);
-                                    acted = true;
                                 }
                             }
                         }
-                    }
-                    ActionType::Fire(idx) => {
-                        // Verify there is an attack at idx before using it.
-                        if self.atks.ranged_atks.len() > idx {
-                            let range = self.atks.ranged_atks[idx].range;
-                            if let Some(p) = get_closest(cmd, pos, range, false) {
+
+                        // If there has been no action, move if there is no entity.
+                        if !acted {
+                            let no_ent = cmd.get_ent(cur_nx).is_none();
+                            if no_ent || unsafe { ENEMIES_REMAINING == 0 } {
+                                // Displace the entity if it generates next to a door.
+                                if !no_ent {
+                                    cmd.queue(
+                                        bn::Cmd::new_on(cur_nx).move_to(cur_nx + unsafe { DIR }),
+                                    );
+                                }
+                                nx = Some(cur_nx);
                                 acted = true;
-                                do_attack(cmd, p - pos, true, idx)
                             }
                         }
                     }
-                    ActionType::Wait => { 
-						acted = true;
-					}
                 }
-
-                if acted {
-                    unsafe { GLOBAL_TIME += 1 }
-                    update_entities(cmd);
-                }
-            } else {
-                let mut attack = false;
-                let mut range = false;
-                let mut idx = 0;
-                let mut dir = Point::ORIGIN;
-
-                let goals = self
-                    .atks
-                    .find_attack_positions(unsafe { PLAYER })
-                    .into_iter()
-                    .filter(|p| verify_pos(&cmd, *p));
-                let r_atk = self.atks.ranged_atks.get(0);
-
-                // Check for melee attack.
-                if let Some((atk_dir, i)) = self.atks.melee_hit_from(pos, unsafe { PLAYER }) {
-                    range = false;
-                    attack = true;
-                    dir = atk_dir;
-                    idx = i;
-                // Then check ranged.
-                } else if let Some(r) = r_atk
-                    && let Some(_p) = get_closest(cmd, pos, r.range, true)
-                {
-                    range = true;
-                    attack = true;
-                    dir = unsafe { PLAYER - pos };
-                // Try to pathfind.
-                } else if let Some(path) =
-                    cmd.pathfind(pos, goals, 20, |p| verify_pos(&cmd, p), &self.movement)
-                {
-                    match path.get(1) {
-                        Some(path_pos) if *path_pos != unsafe { PLAYER } => nx = Some(*path_pos),
-                        _ => attack = true,
+                ActionType::Fire(idx) => {
+                    // Verify there is an attack at idx before using it.
+                    if self.atks.ranged_atks.len() > idx {
+                        let range = self.atks.ranged_atks[idx].range;
+                        if let Some(p) = get_closest(cmd, pos, range, false) {
+                            acted = true;
+                            do_attack(cmd, p - pos, true, idx)
+                        }
                     }
                 }
-
-                if attack {
-                    do_attack(cmd, dir, range, idx);
+                ActionType::Wait => {
+                    acted = true;
                 }
-
-				cmd.queue(
-					bn::Cmd::new_here().modify_entity(Box::new(|e: &mut En| { 
-						e.acted = true;
-					})),
-				);
             }
+
+            if acted {
+                unsafe { GLOBAL_TIME += 1 }
+                update_entities(cmd);
+            }
+        } else {
+            let mut attack = false;
+            let mut range = false;
+            let mut idx = 0;
+            let mut dir = Point::ORIGIN;
+
+            let goals = self
+                .atks
+                .find_attack_positions(unsafe { PLAYER })
+                .into_iter()
+                .filter(|p| verify_pos(cmd, *p));
+            let r_atk = self.atks.ranged_atks.first();
+
+            // Check for melee attack.
+            if let Some((atk_dir, i)) = self.atks.melee_hit_from(pos, unsafe { PLAYER }) {
+                range = false;
+                attack = true;
+                dir = atk_dir;
+                idx = i;
+            // Then check ranged.
+            } else if let Some(r) = r_atk
+                && let Some(_p) = get_closest(cmd, pos, r.range, true)
+            {
+                range = true;
+                attack = true;
+                dir = unsafe { PLAYER - pos };
+            // Try to pathfind.
+            } else if let Some(path) =
+                cmd.pathfind(pos, goals, 20, |p| verify_pos(cmd, p), &self.movement)
+            {
+                match path.get(1) {
+                    Some(path_pos) if *path_pos != unsafe { PLAYER } => nx = Some(*path_pos),
+                    _ => attack = true,
+                }
+            }
+
+            if attack {
+                do_attack(cmd, dir, range, idx);
+            }
+
+            cmd.queue(bn::Cmd::new_here().modify_entity(Box::new(|e: &mut En| {
+                e.acted = true;
+            })));
         }
 
         if let Some(nx) = nx {
@@ -478,23 +473,23 @@ impl bn::Entity for En {
                         if p != pos
                             && let Some(_e) = cmd.get_ent(p)
                         {
-							// Hack to stop the game crashing when an entity is displaced
-							// upon entering the room.
-							let mut e_pos = p;
-							if e_pos == nx {
-								e_pos = unsafe { DIR + e_pos };
-							}
+                            // Hack to stop the game crashing when an entity is displaced
+                            // upon entering the room.
+                            let mut e_pos = p;
+                            if e_pos == nx {
+                                e_pos = unsafe { DIR + e_pos };
+                            }
                             cmd.queue(bn::Cmd::new_on(e_pos).modify_entity(Box::new(
                                 move |e: &mut En| {
                                     e.dormant = false;
-									e.acted = true;
+                                    e.acted = true;
                                 },
                             )));
                             unsafe { ENEMIES_REMAINING += 1 };
                         }
                     }
 
-                    if doors.len() != 0 && unsafe { ENEMIES_REMAINING != 0 } {
+                    if !doors.is_empty() && unsafe { ENEMIES_REMAINING != 0 } {
                         // Lock the doors
                         for door in doors {
                             cmd.queue(bn::Cmd::new_on(door).create_entity(En::new(
@@ -526,7 +521,7 @@ impl bn::Entity for En {
                         3
                     } else if self.is_player {
                         1
-                    } else if GLOBAL_TIME % self.delay as u32 == 0 && !self.acted {
+                    } else if GLOBAL_TIME.is_multiple_of(self.delay as u32) && !self.acted {
                         2
                     } else {
                         0

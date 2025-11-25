@@ -4,5 +4,6 @@
 !/target/release/untitled_bandit.exe
 /doc/
 
+*.swp
 /dbg.txt
 /idea.txt

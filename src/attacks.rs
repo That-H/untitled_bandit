@@ -17,13 +17,13 @@ type OtherEf = fn(Point, Point, &bn::Map<super::entity::En>) -> Vec<bn::Cmd<supe
 /// Some effect that can occur as a result of an attack.
 #[derive(Clone, Debug)]
 pub enum Effect {
-	/// Apply the damage instance to the entity.
-	DoDmg(DmgInst),
-	/// Do something else. Arguments are (in that order):
-	/// - Where you attack from
-	/// - Where you attack
-	/// - Map in which the attack takes place
-	Other(OtherEf)
+    /// Apply the damage instance to the entity.
+    DoDmg(DmgInst),
+    /// Do something else. Arguments are (in that order):
+    /// - Where you attack from
+    /// - Where you attack
+    /// - Map in which the attack takes place
+    Other(OtherEf),
 }
 
 #[derive(Clone, Debug)]
@@ -41,7 +41,12 @@ pub struct MeleeAtk {
 
 impl MeleeAtk {
     /// Create a new melee attack.
-    pub fn new(effects: Vec<Effect>, place: Vec<Point>, fx: Vec<(Point, Vfx)>, miss_fx: Vfx) -> Self {
+    pub fn new(
+        effects: Vec<Effect>,
+        place: Vec<Point>,
+        fx: Vec<(Point, Vfx)>,
+        miss_fx: Vfx,
+    ) -> Self {
         Self {
             effects,
             place,

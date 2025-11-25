@@ -8,7 +8,7 @@ use entity::*;
 use io::Write;
 use rand::prelude::{IndexedRandom, SliceRandom};
 use rand::{Rng, SeedableRng};
-use std::{io, thread, collections::HashMap};
+use std::{collections::HashMap, io, thread};
 use untitled_bandit::*;
 
 const ROOMS: u32 = 50;
@@ -21,8 +21,6 @@ const TERMINAL_HGT: u16 = 30;
 const WINDOW_WIDTH: u16 = 40;
 const WINDOW_HEIGHT: u16 = 20;
 const ARROWS: [char; 4] = ['↓', '←', '↑', '→'];
-const PLAYER_CHARACTER: char = '@';
-const PLAYER_COLOUR: style::Color = style::Color::Green;
 
 // All constants below describe the index of the window container that
 // the corresponding window is located at, or things about the window.
@@ -34,8 +32,15 @@ const ATKS: usize = 2;
 const ATKS_POS: Point = Point::new(10, 12);
 const ATKS_WID: usize = 9;
 
+// Contains the entity templates.
+mod templates;
+
+// use templates::{PLAYER_CHARACTER, PLAYER_COLOUR};
+
+type StepEffect = dyn Fn(Point, &bn::Map<En>) -> Vec<bn::Cmd<En>>;
+
 fn create_conveyor(disp: Point, revealed: bool) -> Tile {
-    let step_effect: Option<Box<dyn Fn(Point, &bn::Map<En>) -> Vec<bn::Cmd<En>>>> =
+    let step_effect: Option<Box<StepEffect>> =
         Some(Box::new(move |pos: Point, _map: &bn::Map<En>| {
             vec![
                 bn::Cmd::new_on(pos).modify_entity(Box::new(move |e: &mut En| {
@@ -85,7 +90,7 @@ fn main() {
                     }
                     map_gen::Cell::Door(id1, id2) => {
                         blocking = false;
-                        door = Some((rooms[*id1].clone(), rooms[*id2].clone()));
+                        door = Some((rooms[*id1], rooms[*id2]));
                         Some('/'.yellow())
                     }
                 },
@@ -116,168 +121,12 @@ fn main() {
         }
     }
 
-    // Generate knight moves without typing them all out.
-    let mut p1 = Point::new(2, 1);
-    let mut p2 = Point::new(2, -1);
+    let templates = templates::get_templates();
 
-    let mut knight = Vec::new();
-
-    for _ in 0..4 {
-        knight.push(p1);
-        knight.push(p2);
-        p1.rotate_90_cw_ip();
-        p2.rotate_90_cw_ip();
-    }
-
-    // Manhattan movement.
-    let manhattan = Point::ORIGIN.get_all_adjacent();
-
-    // Manhattan movement with diagonal.
-    let total = Point::ORIGIN.get_all_adjacent_diagonal();
-
-    // Default attack pattern.
-    let default_atks = AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
-        vec![Effect::DoDmg(DmgInst::dmg(1, 1.0))],
-        style::Color::Red,
-        7,
-        Vfx::new_opaque('?'.stylize(), 7),
-        FOUR_POS_ATK.iter()
-    ));
-	
-	// Functionally identical to default attacks, but looks different.
-	let weird_default = AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
-        vec![Effect::DoDmg(DmgInst::dmg(1, 1.0))],
-        style::Color::Magenta,
-        7,
-        Vfx::new_opaque('?'.stylize(), 7),
-        ['☼'; 4].iter()
-    ));
-	
-	// Default attack pattern with double damage and knockback.
-    let heavy_default_atks = AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
-        vec![Effect::DoDmg(DmgInst::dmg(2, 1.0)), Effect::Other(|from, to, map| {
-			let mut cmds = Vec::new();
-			cmds.push(bn::Cmd::new_on(to).modify_entity(Box::new(move |e: &mut En| e.vel = Some(to - from))));
-			cmds
-		})],
-        style::Color::Red,
-        7,
-        Vfx::new_opaque('?'.stylize(), 7),
-        THICC_FOUR_POS_ATK.iter()
-    ));
-
-    // Default attack pattern with diagonals included.
-    let diagonal_atks = AtkPat::from_atks(MeleeAtk::bulk_new::<8>(
-        vec![Effect::DoDmg(DmgInst::dmg(1, 1.0))],
-        style::Color::Red,
-        7,
-        Vfx::new_opaque('?'.stylize(), 7),
-        EIGHT_POS_ATK.iter()
-    ));
-
-    // Long default attack.
-    let mut spear = default_atks.clone();
-
-    for (_d, atks) in spear.melee_atks.iter_mut() {
-        for atk in atks.iter_mut() {
-            let pos = atk.place[0];
-            atk.fx
-                .push((pos * 2, Vfx::new_opaque(DIR_CHARS[pos.dir()].red(), 7)));
-            for p in atk.place.iter_mut() {
-                *p = *p * 2;
-            }
-        }
-    }
-	
-	// Pull the target towards self, without damaging them.
-    let mut wizardry = AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
-        vec![Effect::Other(|from, to, map| {
-			let disp = (from - to) / 2;
-			let new = to + disp;
-			let mut cmds = Vec::new();
-			cmds.push(bn::Cmd::new_on(to).move_to(new));
-			unsafe {
-				if PLAYER == to {
-					PLAYER = new;
-				}
-			}
-			cmds
-		})],
-        style::Color::Magenta,
-        7,
-        Vfx::new_opaque('?'.stylize(), 7),
-        FOUR_POS_ATK.iter()
-    ));
-
-    for (_d, atks) in wizardry.melee_atks.iter_mut() {
-        for atk in atks.iter_mut() {
-            let pos = atk.place[0];
-            atk.fx
-                .push((pos * 2, Vfx::new_opaque('*'.magenta(), 7)));
-            for p in atk.place.iter_mut() {
-                *p = *p * 2;
-            }
-        }
-    }
-	
-	// Like wizardry, but with a weird default attack included.
-	let mut wizardry_plus = wizardry.clone();
-	
-	for (k, v) in weird_default.melee_atks.iter() {
-		wizardry_plus.melee_atks.get_mut(&k).unwrap().append(&mut v.clone());
-	}
-	
-    let templates = [
-        EntityTemplate {
-            max_hp: 3,
-            delay: 2,
-            movement: manhattan.clone(),
-            ch: 'e'.stylize(),
-            atks: default_atks.clone(),
-        },
-		EntityTemplate {
-            max_hp: 4,
-            delay: 3,
-            movement: manhattan.clone(),
-            ch: 'h'.stylize(),
-            atks: heavy_default_atks.clone(),
-        },
-		EntityTemplate {
-            max_hp: 2,
-            delay: 1,
-            movement: manhattan.clone(),
-            ch: 'l'.stylize(),
-            atks: spear.clone(),
-        },
-        EntityTemplate {
-            max_hp: 2,
-            delay: 2,
-            movement: knight.clone(),
-            ch: 'k'.stylize(),
-            atks: diagonal_atks.clone(),
-        },
-		EntityTemplate {
-            max_hp: 3,
-            delay: 2,
-            movement: manhattan.clone(),
-            ch: 'w'.stylize(),
-            atks: wizardry_plus.clone(),
-        },
-    ];
-	
     let costs = [10, 25, 35, 40, 50];
 
     // Create the player.
-    let pl = En::new(
-        9,
-        true,
-        0,
-        PLAYER_CHARACTER.with(PLAYER_COLOUR),
-        Special::Not,
-        total.clone(),
-        default_atks.clone(),
-        false,
-    );
+    let pl = templates::get_player();
 
     map.insert_entity(pl, unsafe { PLAYER });
 
@@ -305,13 +154,9 @@ fn main() {
 
         'enemy_gen: while let Some((temp, cost)) = get_temp(budget, &mut floor_rng) {
             budget -= cost;
-            let nx = loop {
-                // Exit early if there is no where to place the entity.
-                let Some(c) = cells.pop() else {
-                    break 'enemy_gen;
-                };
-
-                break c;
+            // Exit early if there is no where to place the entity.
+            let Some(nx) = cells.pop() else {
+                break 'enemy_gen;
             };
 
             map.insert_entity(En::from_template(temp, false, true), nx);
@@ -328,29 +173,29 @@ fn main() {
         win_top as i32,
     )));
     win_cont.add_win(windowed::Window::new(STATS_POS));
-	win_cont.add_win(windowed::Window::new(ATKS_POS));
+    win_cont.add_win(windowed::Window::new(ATKS_POS));
 
     let delay = std::time::Duration::from_millis(DELAY);
     let vfx_delay = std::time::Duration::from_millis(VFX_DELAY);
     let mut ready;
-	
+
     // Colours the text with the given colour and puts it into the window. Ensures at least len styled characters
     // are contained within the line.
-    let mut add_line = |clr: style::Color,
-                        txt: &str,
-                        win: &mut windowed::Window<style::StyledContent<char>>,
-                        len: usize| {
+    let add_line = |clr: style::Color,
+                    txt: &str,
+                    win: &mut windowed::Window<style::StyledContent<char>>,
+                    len: usize| {
         let mut line = vec![' '.stylize()];
         for ch in txt.chars() {
             line.push(ch.with(clr));
         }
-		let line_len = line.len();
-		if line_len < len {
-			for _ in 0..len - line_len {
-				line.push(' '.stylize());
-			}
-		}
-		
+        let line_len = line.len();
+        if line_len < len {
+            for _ in 0..len - line_len {
+                line.push(' '.stylize());
+            }
+        }
+
         win.data.push(line);
     };
 
@@ -369,71 +214,71 @@ fn main() {
 
             // Create some stats and put them in a window.
             cur_win = &mut win_cont.windows[STATS];
-			cur_win.data.clear();
-			cur_win.data.push(vec![' '.stylize(); STATS_WID]);
-			
-			// HP display.
+            cur_win.data.clear();
+            cur_win.data.push(vec![' '.stylize(); STATS_WID]);
+
+            // HP display.
             add_line(
                 style::Color::Red,
                 &format!("HP: {}/{}", pl.hp.value(), pl.hp.max),
                 cur_win,
-                STATS_WID as usize,
+                STATS_WID,
             );
-			// Position display.
+            // Position display.
             add_line(
                 style::Color::Green,
                 &format!("{player_pos}"),
                 cur_win,
-                STATS_WID as usize,
+                STATS_WID,
             );
-			// Time display.
+            // Time display.
             add_line(
                 style::Color::Blue,
                 &format!("Time: {}", unsafe { GLOBAL_TIME }),
                 cur_win,
-                STATS_WID as usize,
+                STATS_WID,
             );
-			
-			cur_win.data.push(vec![' '.stylize(); STATS_WID]);
-			cur_win.outline_with('#'.grey());
-			
-			// Display current attacks and put them in a window.
-            cur_win = &mut win_cont.windows[ATKS];
-			cur_win.data.clear();
-			let mut damages: HashMap<Point, DmgInst> = HashMap::new();
-			
-			for atks in pl.atks.melee_atks.values() {
-				for atk in atks.iter() {
-					for pos in atk.place.iter() {
-						for ef in atk.effects.iter() {
-							if let Effect::DoDmg(dmg_inst) = ef {
-								damages.insert(*pos, *dmg_inst);
-							}
-						}
-					}
-				}
-			}
-			
-			let win_centre = Point::new((ATKS_WID / 2) as i32, (ATKS_WID / 2) as i32);
-			
-			for y in 0..ATKS_WID {
-				cur_win.data.push(Vec::new());
-				for x in 0..ATKS_WID {
-					let pos = Point::new(x as i32, y as i32);
 
-					let mut ch = '.'.stylize();
-					if pos == win_centre {
-						ch = pl.ch;
-					} else if let Some(dmg_inst) = damages.get(&(pos - win_centre)) {
-						ch = match dmg_inst.dmg {
-							DmgType::Dmg(d) => char::from_digit(d, 16).unwrap().red(),
-							DmgType::Heal(h) => char::from_digit(h, 16).unwrap().green(),
-						};
-					}
-					cur_win.data[y].push(ch);
-				}
-			}
-			
+            cur_win.data.push(vec![' '.stylize(); STATS_WID]);
+            cur_win.outline_with('#'.grey());
+
+            // Display current attacks and put them in a window.
+            cur_win = &mut win_cont.windows[ATKS];
+            cur_win.data.clear();
+            let mut damages: HashMap<Point, DmgInst> = HashMap::new();
+
+            for atks in pl.atks.melee_atks.values() {
+                for atk in atks.iter() {
+                    for pos in atk.place.iter() {
+                        for ef in atk.effects.iter() {
+                            if let Effect::DoDmg(dmg_inst) = ef {
+                                damages.insert(*pos, *dmg_inst);
+                            }
+                        }
+                    }
+                }
+            }
+
+            let win_centre = Point::new((ATKS_WID / 2) as i32, (ATKS_WID / 2) as i32);
+
+            for y in 0..ATKS_WID {
+                cur_win.data.push(Vec::new());
+                for x in 0..ATKS_WID {
+                    let pos = Point::new(x as i32, y as i32);
+
+                    let mut ch = '.'.stylize();
+                    if pos == win_centre {
+                        ch = pl.ch;
+                    } else if let Some(dmg_inst) = damages.get(&(pos - win_centre)) {
+                        ch = match dmg_inst.dmg {
+                            DmgType::Dmg(d) => char::from_digit(d, 16).unwrap().red(),
+                            DmgType::Heal(h) => char::from_digit(h, 16).unwrap().green(),
+                        };
+                    }
+                    cur_win.data[y].push(ch);
+                }
+            }
+
             cur_win.outline_with('#'.grey());
 
             win_cont.refresh();

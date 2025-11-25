@@ -34,8 +34,10 @@ pub struct Tile {
     pub slippery: bool,
     /// Something that occurs when an entity steps on this tile. The arguments are the position
     /// of the tile and a commands instance with which to actuate effects.
-    pub step_effect: Option<Box<dyn Fn(Point, &bn::Map<entity::En>) -> Vec<bn::Cmd<entity::En>>>>,
+    pub step_effect: Option<Box<StepEffect>>,
 }
+
+type StepEffect = dyn Fn(Point, &bn::Map<entity::En>) -> Vec<bn::Cmd<entity::En>>;
 
 impl Tile {
     /// Create a new revealed empty tile.
@@ -71,7 +73,7 @@ impl bn::Tile for Tile {
     type Repr = StyleCh;
 
     fn repr(&self) -> Self::Repr {
-        let ch = if !self.revealed {
+        if !self.revealed {
             ' '.stylize()
         } else if let Some(c) = self.ch {
             c
@@ -81,8 +83,7 @@ impl bn::Tile for Tile {
             '.'.dark_grey()
         } else {
             ' '.stylize()
-        };
-        ch
+        }
     }
 }
 
