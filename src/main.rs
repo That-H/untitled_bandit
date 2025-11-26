@@ -300,34 +300,29 @@ fn main() {
         if map.get_ent(unsafe { PLAYER }).unwrap().vel.is_none() {
             while let event::Event::Key(ke) = event::read().expect("what") {
                 if ke.is_press() {
-                    let (mut new, action) = match ke.code {
-                        event::KeyCode::Left | event::KeyCode::Char('a') => {
-                            (Point::new(-1, 0), ActionType::TryMove)
-                        }
-                        event::KeyCode::Right | event::KeyCode::Char('d') => {
-                            (Point::new(1, 0), ActionType::TryMove)
-                        }
-                        event::KeyCode::Down | event::KeyCode::Char('s') => {
-                            (Point::new(0, -1), ActionType::TryMove)
-                        }
-                        event::KeyCode::Up | event::KeyCode::Char('w') => {
-                            (Point::new(0, 1), ActionType::TryMove)
-                        }
-                        event::KeyCode::Char('.') => (Point::ORIGIN, ActionType::Wait),
-                        event::KeyCode::Char('f') => (Point::ORIGIN, ActionType::Fire(0)),
-                        event::KeyCode::Char('g') => (Point::ORIGIN, ActionType::Fire(1)),
-                        event::KeyCode::Char('h') => (Point::ORIGIN, ActionType::Fire(2)),
+                    let action = match ke.code {
+                        // Has arrow keys, wasd, and, for the vim users among us, hjkl.
+                        event::KeyCode::Left
+                        | event::KeyCode::Char('a')
+                        | event::KeyCode::Char('h') => ActionType::TryMove(Point::new(-1, 0)),
+                        event::KeyCode::Right
+                        | event::KeyCode::Char('d')
+                        | event::KeyCode::Char('l') => ActionType::TryMove(Point::new(1, 0)),
+                        event::KeyCode::Down
+                        | event::KeyCode::Char('s')
+                        | event::KeyCode::Char('j') => ActionType::TryMove(Point::new(0, -1)),
+                        event::KeyCode::Up
+                        | event::KeyCode::Char('w')
+                        | event::KeyCode::Char('k') => ActionType::TryMove(Point::new(0, 1)),
+                        event::KeyCode::Char('.') => ActionType::Wait,
+                        event::KeyCode::Char('f') => ActionType::Fire(0),
+                        event::KeyCode::Char('g') => ActionType::Fire(1),
+                        event::KeyCode::Char('b') => ActionType::Fire(2),
                         event::KeyCode::Enter => break 'main,
                         _ => continue,
                     };
 
-                    // Rotate 45° clockwise if shift is held.
-                    if ke.modifiers.intersects(event::KeyModifiers::SHIFT) {
-                        new = Point::new(new.x - new.y, new.x + new.y);
-                    }
-
-                    unsafe {
-                        DIR = new;
+                    unsafe { 
                         ACTION = action;
                     }
 
@@ -335,8 +330,7 @@ fn main() {
                 }
             }
         } else {
-            unsafe {
-                DIR = Point::ORIGIN;
+            unsafe { 
                 ACTION = ActionType::Wait;
             }
             clear_events();
@@ -363,11 +357,11 @@ fn main() {
                 thread::sleep(vfx_delay);
             }
             unsafe {
-               // Check if the player has died.
-               if map.get_ent(PLAYER).unwrap().is_dead() {
-                   println!("you are dead");
-                   break 'main;
-               } 
+                // Check if the player has died.
+                if map.get_ent(PLAYER).unwrap().is_dead() {
+                    println!("you are dead");
+                    break 'main;
+                }
             }
         }
 

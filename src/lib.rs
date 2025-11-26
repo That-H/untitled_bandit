@@ -248,12 +248,19 @@ impl<T: Clone + PartialOrd> ops::Deref for Datum<T> {
 }
 
 /// Some action the player can take.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub enum ActionType {
-    /// Try to move.
-    TryMove,
+    /// Try to move with the given displacement.
+    TryMove(Point),
+    /// Use a melee attack against the player if possible. If multiple are possible,
+    /// the first one found will be used.
+    TryMelee,
     /// Use the ranged attack at the given index.
     Fire(usize),
+    /// Pathfind towards the player.
+    Pathfind,
     /// Do nothing.
     Wait,
+    /// Does the first action, and if it fails, does the second one.
+    Chain(Box<ActionType>, Box<ActionType>)
 }

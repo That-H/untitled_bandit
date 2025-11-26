@@ -4,7 +4,11 @@ pub const PLAYER_CHARACTER: char = '@';
 pub const PLAYER_COLOUR: style::Color = style::Color::Green;
 
 /// Create an instance of the default attack pattern.
-pub fn get_default_atks(dmg: u32, chars: impl IntoIterator<Item = char>, clr: style::Color) -> AtkPat {
+pub fn get_default_atks(
+    dmg: u32,
+    chars: impl IntoIterator<Item = char>,
+    clr: style::Color,
+) -> AtkPat {
     AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
         vec![Effect::DoDmg(DmgInst::dmg(dmg, 1.0))],
         clr,
@@ -38,7 +42,7 @@ pub fn get_player() -> En {
     En::new(
         9,
         true,
-        0,
+        Vec::new(),
         PLAYER_CHARACTER.with(PLAYER_COLOUR),
         Special::Not,
         Point::ORIGIN.get_all_adjacent_diagonal(),
@@ -76,7 +80,7 @@ pub fn get_templates() -> Vec<EntityTemplate> {
 
     // Default attack pattern with double damage and knockback.
     let heavy_default_atks = get_hvy_atks(2, THICC_FOUR_POS_ATK, style::Color::Red);
-    
+
     // Default attack pattern with diagonals included.
     let diagonal_atks = AtkPat::from_atks(MeleeAtk::bulk_new::<8>(
         vec![Effect::DoDmg(DmgInst::dmg(1, 1.0))],
@@ -143,35 +147,50 @@ pub fn get_templates() -> Vec<EntityTemplate> {
     vec![
         EntityTemplate {
             max_hp: 3,
-            delay: 2,
+            actions: vec![
+                ActionType::Wait,
+                ActionType::Chain(Box::new(ActionType::TryMelee), Box::new(ActionType::Pathfind))
+            ],
             movement: manhattan.clone(),
             ch: 'e'.stylize(),
             atks: default_atks.clone(),
         },
         EntityTemplate {
             max_hp: 4,
-            delay: 3,
+            actions: vec![
+                ActionType::Wait,
+                ActionType::Wait,
+                ActionType::Chain(Box::new(ActionType::TryMelee), Box::new(ActionType::Pathfind)),
+            ], 
             movement: manhattan.clone(),
             ch: 'h'.stylize(),
             atks: heavy_default_atks.clone(),
         },
         EntityTemplate {
             max_hp: 2,
-            delay: 1,
+            actions: vec![
+                ActionType::Chain(Box::new(ActionType::TryMelee), Box::new(ActionType::Pathfind))
+            ],
             movement: manhattan.clone(),
             ch: 'l'.stylize(),
             atks: spear.clone(),
         },
         EntityTemplate {
             max_hp: 2,
-            delay: 2,
+            actions: vec![
+                ActionType::Wait,
+                ActionType::Chain(Box::new(ActionType::TryMelee), Box::new(ActionType::Pathfind)),
+            ],
             movement: knight.clone(),
             ch: 'k'.stylize(),
             atks: diagonal_atks.clone(),
         },
         EntityTemplate {
             max_hp: 3,
-            delay: 2,
+            actions: vec![
+                ActionType::Wait,
+                ActionType::Chain(Box::new(ActionType::TryMelee), Box::new(ActionType::Pathfind)),
+            ],
             movement: manhattan.clone(),
             ch: 'w'.stylize(),
             atks: wizardry_plus.clone(),
