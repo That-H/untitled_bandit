@@ -58,12 +58,12 @@ impl MeleeAtk {
     /// Create amount attacks with the given vfx parameters. An amount of four leads to
     /// the four orthogonally adjacent positions being attackable, and an amount of eight
     /// also includes diagonally adjacent positions.
-    pub fn bulk_new<'a, const N: usize>(
+    pub fn bulk_new<const N: usize>(
         effects: Vec<Effect>,
         clr: style::Color,
         frames: usize,
         miss_fx: Vfx,
-        chars: impl IntoIterator<Item = &'a char>,
+        chars: impl IntoIterator<Item = char>,
     ) -> Vec<Self> {
         let mut bulk = Vec::new();
         let get_atk = |pos: Point, ch: char| {
@@ -81,7 +81,7 @@ impl MeleeAtk {
                 .into_iter()
                 .zip(chars.into_iter())
             {
-                bulk.push(get_atk(pos, *ch));
+                bulk.push(get_atk(pos, ch));
             }
         } else if N == 8 {
             for (pos, ch) in Point::ORIGIN
@@ -89,7 +89,7 @@ impl MeleeAtk {
                 .into_iter()
                 .zip(chars.into_iter())
             {
-                bulk.push(get_atk(pos, *ch));
+                bulk.push(get_atk(pos, ch));
             }
         } else {
             panic!("Expected to create 4 or 8 attacks, but got {N}");

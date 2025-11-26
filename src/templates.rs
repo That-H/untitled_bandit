@@ -4,13 +4,32 @@ pub const PLAYER_CHARACTER: char = '@';
 pub const PLAYER_COLOUR: style::Color = style::Color::Green;
 
 /// Create an instance of the default attack pattern.
-pub fn get_default_atks() -> AtkPat {
+pub fn get_default_atks(dmg: u32, chars: impl IntoIterator<Item = char>, clr: style::Color) -> AtkPat {
     AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
-        vec![Effect::DoDmg(DmgInst::dmg(1, 1.0))],
-        style::Color::Red,
+        vec![Effect::DoDmg(DmgInst::dmg(dmg, 1.0))],
+        clr,
         7,
         Vfx::new_opaque('?'.stylize(), 7),
-        FOUR_POS_ATK.iter(),
+        chars.into_iter(),
+    ))
+}
+
+/// Creates an attack with knockback.
+pub fn get_hvy_atks(dmg: u32, chars: impl IntoIterator<Item = char>, clr: style::Color) -> AtkPat {
+    AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
+        vec![
+            Effect::DoDmg(DmgInst::dmg(dmg, 1.0)),
+            Effect::Other(|from, to, _map| {
+                vec![
+                    bn::Cmd::new_on(to)
+                        .modify_entity(Box::new(move |e: &mut En| e.vel = Some(to - from))),
+                ]
+            }),
+        ],
+        clr,
+        7,
+        Vfx::new_opaque('?'.stylize(), 7),
+        chars,
     ))
 }
 
@@ -23,7 +42,7 @@ pub fn get_player() -> En {
         PLAYER_CHARACTER.with(PLAYER_COLOUR),
         Special::Not,
         Point::ORIGIN.get_all_adjacent_diagonal(),
-        get_default_atks(),
+        get_default_atks(1, FOUR_POS_ATK, style::Color::Red),
         false,
     )
 }
@@ -50,41 +69,21 @@ pub fn get_templates() -> Vec<EntityTemplate> {
     let _total = Point::ORIGIN.get_all_adjacent_diagonal();
 
     // Default attack pattern.
-    let default_atks = get_default_atks();
+    let default_atks = get_default_atks(1, FOUR_POS_ATK, style::Color::Red);
 
     // Functionally identical to default attacks, but looks different.
-    let weird_default = AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
-        vec![Effect::DoDmg(DmgInst::dmg(1, 1.0))],
-        style::Color::Magenta,
-        7,
-        Vfx::new_opaque('?'.stylize(), 7),
-        ['☼'; 4].iter(),
-    ));
+    let weird_default = get_default_atks(1, ['☼'; 4], style::Color::Magenta);
 
     // Default attack pattern with double damage and knockback.
-    let heavy_default_atks = AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
-        vec![
-            Effect::DoDmg(DmgInst::dmg(2, 1.0)),
-            Effect::Other(|from, to, _map| {
-                vec![
-                    bn::Cmd::new_on(to)
-                        .modify_entity(Box::new(move |e: &mut En| e.vel = Some(to - from))),
-                ]
-            }),
-        ],
-        style::Color::Red,
-        7,
-        Vfx::new_opaque('?'.stylize(), 7),
-        THICC_FOUR_POS_ATK.iter(),
-    ));
-
+    let heavy_default_atks = get_hvy_atks(2, THICC_FOUR_POS_ATK, style::Color::Red);
+    
     // Default attack pattern with diagonals included.
     let diagonal_atks = AtkPat::from_atks(MeleeAtk::bulk_new::<8>(
         vec![Effect::DoDmg(DmgInst::dmg(1, 1.0))],
         style::Color::Red,
         7,
         Vfx::new_opaque('?'.stylize(), 7),
-        EIGHT_POS_ATK.iter(),
+        EIGHT_POS_ATK.into_iter(),
     ));
 
     // Long default attack.
@@ -117,7 +116,7 @@ pub fn get_templates() -> Vec<EntityTemplate> {
         style::Color::Magenta,
         7,
         Vfx::new_opaque('?'.stylize(), 7),
-        FOUR_POS_ATK.iter(),
+        FOUR_POS_ATK.into_iter(),
     ));
 
     for (_d, atks) in wizardry.melee_atks.iter_mut() {

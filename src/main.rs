@@ -363,10 +363,11 @@ fn main() {
                 thread::sleep(vfx_delay);
             }
             unsafe {
-                if DEAD {
-                    println!("You are dead");
-                    break 'main;
-                }
+               // Check if the player has died.
+               if map.get_ent(PLAYER).unwrap().is_dead() {
+                   println!("you are dead");
+                   break 'main;
+               } 
             }
         }
 
