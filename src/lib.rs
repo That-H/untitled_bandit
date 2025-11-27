@@ -262,5 +262,14 @@ pub enum ActionType {
     /// Do nothing.
     Wait,
     /// Does the first action, and if it fails, does the second one.
-    Chain(Box<ActionType>, Box<ActionType>)
+    Chain(Box<ActionType>, Box<ActionType>),
+    /// Does the action at the first idx given if the predicate evaluates to true,
+    /// otherwise does the action at the other idx given.
+    /// As arguments, the predicate takes the current map, the entity currently acting,
+    /// and the position of the entity in the map.
+    CondBranch(
+        usize,
+        usize,
+        Box<fn(&bn::Map<entity::En>, &entity::En, Point) -> bool>,
+    ),
 }

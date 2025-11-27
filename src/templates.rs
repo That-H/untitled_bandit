@@ -149,7 +149,10 @@ pub fn get_templates() -> Vec<EntityTemplate> {
             max_hp: 3,
             actions: vec![
                 ActionType::Wait,
-                ActionType::Chain(Box::new(ActionType::TryMelee), Box::new(ActionType::Pathfind))
+                ActionType::Chain(
+                    Box::new(ActionType::TryMelee),
+                    Box::new(ActionType::Pathfind),
+                ),
             ],
             movement: manhattan.clone(),
             ch: 'e'.stylize(),
@@ -160,17 +163,21 @@ pub fn get_templates() -> Vec<EntityTemplate> {
             actions: vec![
                 ActionType::Wait,
                 ActionType::Wait,
-                ActionType::Chain(Box::new(ActionType::TryMelee), Box::new(ActionType::Pathfind)),
-            ], 
+                ActionType::Chain(
+                    Box::new(ActionType::TryMelee),
+                    Box::new(ActionType::Pathfind),
+                ),
+            ],
             movement: manhattan.clone(),
             ch: 'h'.stylize(),
             atks: heavy_default_atks.clone(),
         },
         EntityTemplate {
             max_hp: 2,
-            actions: vec![
-                ActionType::Chain(Box::new(ActionType::TryMelee), Box::new(ActionType::Pathfind))
-            ],
+            actions: vec![ActionType::Chain(
+                Box::new(ActionType::TryMelee),
+                Box::new(ActionType::Pathfind),
+            )],
             movement: manhattan.clone(),
             ch: 'l'.stylize(),
             atks: spear.clone(),
@@ -179,7 +186,10 @@ pub fn get_templates() -> Vec<EntityTemplate> {
             max_hp: 2,
             actions: vec![
                 ActionType::Wait,
-                ActionType::Chain(Box::new(ActionType::TryMelee), Box::new(ActionType::Pathfind)),
+                ActionType::Chain(
+                    Box::new(ActionType::TryMelee),
+                    Box::new(ActionType::Pathfind),
+                ),
             ],
             movement: knight.clone(),
             ch: 'k'.stylize(),
@@ -189,7 +199,10 @@ pub fn get_templates() -> Vec<EntityTemplate> {
             max_hp: 3,
             actions: vec![
                 ActionType::Wait,
-                ActionType::Chain(Box::new(ActionType::TryMelee), Box::new(ActionType::Pathfind)),
+                ActionType::Chain(
+                    Box::new(ActionType::TryMelee),
+                    Box::new(ActionType::Pathfind),
+                ),
             ],
             movement: manhattan.clone(),
             ch: 'w'.stylize(),

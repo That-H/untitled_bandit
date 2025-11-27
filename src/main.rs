@@ -322,7 +322,7 @@ fn main() {
                         _ => continue,
                     };
 
-                    unsafe { 
+                    unsafe {
                         ACTION = action;
                     }
 
@@ -330,7 +330,7 @@ fn main() {
                 }
             }
         } else {
-            unsafe { 
+            unsafe {
                 ACTION = ActionType::Wait;
             }
             clear_events();

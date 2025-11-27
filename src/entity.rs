@@ -5,8 +5,8 @@ use super::*;
 use crate::bn;
 use attacks::*;
 use bn::Entity;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Direction the player should go in.
 pub static mut DIR: Point = Point::new(0, 0);
@@ -49,8 +49,8 @@ pub struct En {
     pub hp: Datum<u32>,
     /// Stores the pattern through which the entity cycles.
     pub actions: Vec<ActionType>,
-    /// Amount by which the action sequence is shifted forwards.
-    pub phase: usize,
+    /// Index of the next action to use.
+    pub count: usize,
     /// Is this entity the player?
     pub is_player: bool,
     /// How it is special.
@@ -81,12 +81,9 @@ impl En {
         atks: AtkPat,
         dormant: bool,
     ) -> Self {
-        let len = actions.len();
-        let phase = if len > 0 { unsafe { GLOBAL_TIME as usize % len } } else { 0 };
-
         Self {
             hp: Datum::new(max_hp),
-            phase,
+            count: 0,
             actions,
             is_player,
             special,
@@ -145,32 +142,6 @@ impl En {
     pub fn is_dead(&self) -> bool {
         self.hp == 0
     }
-
-    /// Return the index of the current action to use.
-    pub fn act_idx(&self) -> usize {
-        unsafe { (GLOBAL_TIME as usize + self.phase) % self.actions.len() }
-    }
-
-    /// Return the index of the action before the current one.
-    pub fn prev_act_idx(&self) -> usize {
-        let idx = self.act_idx();
-        if idx == 0 {
-            self.actions.len()
-        } else {
-            idx - 1
-        }
-    }
-
-    /// Return the index of the action after the current one.
-    pub fn next_act_idx(&self) -> usize {
-        let idx = self.act_idx();
-        let len = self.actions.len();
-        if idx >= len - 1 {
-            0
-        } else {
-            idx + 1
-        }
-    }
 }
 
 impl fmt::Display for En {
@@ -190,7 +161,7 @@ impl bn::Entity for En {
                 return self.ch;
             }
             // Highlight if about to act.
-            match self.actions.get(self.next_act_idx()).unwrap() {
+            match self.actions.get(self.count).unwrap() {
                 ActionType::Wait => self.ch,
                 _ => self.ch.on_red(),
             }
@@ -229,6 +200,7 @@ impl bn::Entity for En {
 
         let mut nx = None;
         let mut acted = false;
+        let mut new_count = self.count + 1;
 
         // Check there is nothing at the given pos.
         let verify_pos = |cmd: &bn::Commands<'_, Self>, pos: Point| match cmd.get_map(pos) {
@@ -256,7 +228,7 @@ impl bn::Entity for En {
                         && verify_line(cmd, to, **p)
                         && to.dist_squared(**p) as u32 <= range * range
                 })
-            .min_by_key(move |(p, _e)| to.dist_squared(**p))
+                .min_by_key(move |(p, _e)| to.dist_squared(**p))
                 .map(|v| *v.0)
         };
 
@@ -313,13 +285,13 @@ impl bn::Entity for En {
                                 if hit {
                                     // Apply damage.
                                     cmd.queue(bn::Cmd::new_on(target).modify_entity(Box::new(
-                                                move |e: &mut En| {
-                                                    e.apply_dmg(dmg_inst);
-                                                },
+                                        move |e: &mut En| {
+                                            e.apply_dmg(dmg_inst);
+                                        },
                                     )));
                                 } else if !is_ranged {
                                     cmd.queue(bn::Cmd::new_on(target).create_effect(
-                                            self.atks.melee_atks[&dir][atk_idx].miss_fx.clone(),
+                                        self.atks.melee_atks[&dir][atk_idx].miss_fx.clone(),
                                     ));
                                 }
                             }
@@ -328,98 +300,128 @@ impl bn::Entity for En {
                     }
                 }
             };
-        
+
         // Stupid shit to get a recursive closure.
-        let handle_action_inner: Rc<RefCell<Box<dyn Fn(ActionType, &mut bn::Commands<En>, &En, Point) -> (Option<Point>, bool)>>> = Rc::new(RefCell::new(Box::new(|_, _, _, _| (None, false))));
+        let handle_action_inner: Rc<
+            RefCell<
+                Box<
+                    dyn Fn(
+                        ActionType,
+                        &mut bn::Commands<En>,
+                        &En,
+                        Point,
+                    ) -> (Option<Point>, bool, usize),
+                >,
+            >,
+        > = Rc::new(RefCell::new(Box::new(|_, _, _, _| (None, false, 0))));
 
         let handle_action = Rc::clone(&handle_action_inner);
 
-        *(handle_action_inner.borrow_mut()) = Box::new(move |act: ActionType, cmd: &mut bn::Commands<En>, cur_en: &En, pos: Point| -> (Option<Point>, bool) {
-            let mut acted = false;
-            let mut nx: Option<Point> = None;
-            match act {
-                ActionType::TryMove(disp) => {
-                    let cur_nx = pos + disp;
-                    if !cmd.get_map(cur_nx).unwrap().blocking {
-                        // Check if there are any attacks that hit something in this direction,
-                        // and if so, do the first one.
-                        if let Some(atks) = cur_en.atks.melee_atks.get(&disp) {
-                            'outer: for atk in atks.iter() {
-                                for (n, atk_pos) in atk.place.iter().enumerate() {
-                                    if let Some(e) = cmd.get_ent(*atk_pos + pos)
-                                        && (e.is_player ^ cur_en.is_player)
+        *(handle_action_inner.borrow_mut()) = Box::new(
+            move |act: ActionType,
+                  cmd: &mut bn::Commands<En>,
+                  cur_en: &En,
+                  pos: Point|
+                  -> (Option<Point>, bool, usize) {
+                let mut acted = false;
+                let mut nx: Option<Point> = None;
+                let mut new_count = cur_en.count + 1;
+                match act {
+                    ActionType::TryMove(disp) => {
+                        let cur_nx = pos + disp;
+                        if !cmd.get_map(cur_nx).unwrap().blocking {
+                            // Check if there are any attacks that hit something in this direction,
+                            // and if so, do the first one.
+                            if let Some(atks) = cur_en.atks.melee_atks.get(&disp) {
+                                'outer: for atk in atks.iter() {
+                                    for (n, atk_pos) in atk.place.iter().enumerate() {
+                                        if let Some(e) = cmd.get_ent(*atk_pos + pos)
+                                            && (e.is_player ^ cur_en.is_player)
                                             && !e.dormant
-                                    {
-                                        do_attack(cmd, disp, false, n);
-                                        acted = true;
-                                        break 'outer;
+                                        {
+                                            do_attack(cmd, disp, false, n);
+                                            acted = true;
+                                            break 'outer;
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        // If there has been no action, move if there is no entity in the way.
-                        if !acted {
-                            let no_ent = cmd.get_ent(cur_nx).is_none();
-                            if no_ent || unsafe { ENEMIES_REMAINING == 0 } {
-                                // Displace the entity if it generates next to a door.
-                                if !no_ent {
-                                    cmd.queue(
-                                        bn::Cmd::new_on(cur_nx).move_to(cur_nx + unsafe { DIR }),
-                                    );
+                            // If there has been no action, move if there is no entity in the way.
+                            if !acted {
+                                let no_ent = cmd.get_ent(cur_nx).is_none();
+                                if no_ent || unsafe { ENEMIES_REMAINING == 0 } {
+                                    // Displace the entity if it generates next to a door.
+                                    if !no_ent {
+                                        cmd.queue(bn::Cmd::new_on(cur_nx).move_to(cur_nx + disp));
+                                    }
+                                    nx = Some(cur_nx);
+                                    acted = true;
                                 }
-                                nx = Some(cur_nx);
-                                acted = true;
                             }
                         }
                     }
-                }
-                ActionType::TryMelee => {
-                    // Check for melee attack against the player.
-                    if let Some((atk_dir, i)) = self.atks.melee_hit_from(pos, unsafe { PLAYER }) {
-                        acted = true;
-                        do_attack(cmd, atk_dir, false, i);
-                    }
-                }
-                ActionType::Fire(idx) => {
-                    // Verify there is an attack at idx before using it.
-                    if cur_en.atks.ranged_atks.len() > idx {
-                        let range = cur_en.atks.ranged_atks[idx].range;
-                        if let Some(p) = get_closest(cmd, pos, range, !cur_en.is_player) {
+                    ActionType::TryMelee => {
+                        // Check for melee attack against the player.
+                        if let Some((atk_dir, i)) = self.atks.melee_hit_from(pos, unsafe { PLAYER })
+                        {
                             acted = true;
-                            do_attack(cmd, p - pos, true, idx)
+                            do_attack(cmd, atk_dir, false, i);
                         }
                     }
-                }
-                ActionType::Pathfind => {
-                    let goals = cur_en
-                        .atks
-                        .find_attack_positions(unsafe { PLAYER })
-                        .into_iter()
-                        .filter(|p| verify_pos(cmd, *p));
+                    ActionType::Fire(idx) => {
+                        // Verify there is an attack at idx before using it.
+                        if cur_en.atks.ranged_atks.len() > idx {
+                            let range = cur_en.atks.ranged_atks[idx].range;
+                            if let Some(p) = get_closest(cmd, pos, range, !cur_en.is_player) {
+                                acted = true;
+                                do_attack(cmd, p - pos, true, idx)
+                            }
+                        }
+                    }
+                    ActionType::Pathfind => {
+                        let goals = cur_en
+                            .atks
+                            .find_attack_positions(unsafe { PLAYER })
+                            .into_iter()
+                            .filter(|p| verify_pos(cmd, *p));
 
-                    if let Some(path) =
-                        cmd.pathfind(pos, goals, 20, |p| verify_pos(cmd, p), &cur_en.movement)
-                    {
-                        match path.get(1) {
-                            Some(path_pos) if *path_pos != unsafe { PLAYER } => nx = Some(*path_pos),
-                            _ => (),
+                        if let Some(path) =
+                            cmd.pathfind(pos, goals, 20, |p| verify_pos(cmd, p), &cur_en.movement)
+                        {
+                            match path.get(1) {
+                                Some(path_pos) if *path_pos != unsafe { PLAYER } => {
+                                    nx = Some(*path_pos)
+                                }
+                                _ => (),
+                            }
                         }
                     }
-                }
-                ActionType::Wait => {
-                    acted = true;
-                }
-                ActionType::Chain(first, fail) => {
-                    (nx, acted) = handle_action.borrow()((*first).clone(), cmd, cur_en, pos);
-                    if !acted {
-                        (nx, _) = handle_action.borrow()((*fail).clone(), cmd, cur_en, pos);
+                    ActionType::Wait => {
                         acted = true;
                     }
+                    ActionType::Chain(first, fail) => {
+                        (nx, acted, new_count) =
+                            handle_action.borrow()((*first).clone(), cmd, cur_en, pos);
+                        if !acted {
+                            (nx, _, new_count) =
+                                handle_action.borrow()((*fail).clone(), cmd, cur_en, pos);
+                            acted = true;
+                        }
+                    }
+                    ActionType::CondBranch(idx_t, idx_f, clos) => {
+                        let nx_idx = if clos(&*cmd, self, pos) { idx_t } else { idx_f };
+                        (nx, acted, new_count) = handle_action.borrow()(
+                            cur_en.actions[nx_idx].clone(),
+                            cmd,
+                            cur_en,
+                            pos,
+                        );
+                    }
                 }
-            } 
-            (nx, acted)
-        });
+                (nx, acted, new_count)
+            },
+        );
 
         // Apply velocity if necessary.
         if let Some(v) = self.vel {
@@ -450,12 +452,10 @@ impl bn::Entity for En {
             let cur_act = if self.is_player {
                 unsafe { ACTION.clone() }
             } else {
-                self.actions[self.act_idx()].clone()
+                self.actions[self.count].clone()
             };
-            
-            let (cur_nx, did_act) = (handle_action_inner.borrow())(cur_act, cmd, self, pos);
-            nx = cur_nx;
-            acted = did_act;  
+
+            (nx, acted, new_count) = (handle_action_inner.borrow())(cur_act, cmd, self, pos);
         }
 
         if let Some(nx) = nx {
@@ -471,13 +471,13 @@ impl bn::Entity for En {
                 if slip {
                     cmd.queue(
                         bn::Cmd::new_here()
-                        .modify_entity(Box::new(move |e: &mut En| e.vel = Some(nx - pos))),
+                            .modify_entity(Box::new(move |e: &mut En| e.vel = Some(nx - pos))),
                     );
                 }
             }
 
             if self.is_player {
-                unsafe { PLAYER = nx } 
+                unsafe { PLAYER = nx }
             }
 
             // Check this is a door, and reveal the room if we move into it.
@@ -488,12 +488,15 @@ impl bn::Entity for En {
                 if let Some((room1, room2)) = &t.door {
                     let rect = if room1.contains(nx) { room1 } else { room2 };
                     let mut doors = Vec::new();
+                    // Flag to say whether or not we are locking all the doors due to 
+                    // an enemy being detected in the room.
+                    let mut dooring = false;
 
                     // Iterate over all cells of the room and reveal them.
                     for p in rect.cells() {
                         cmd.queue(
                             bn::Cmd::new_on(p)
-                            .modify_tile(Box::new(|t: &mut Tile| t.revealed = true)),
+                                .modify_tile(Box::new(|t: &mut Tile| t.revealed = true)),
                         );
 
                         // Mark the position for locking if it is a door.
@@ -507,34 +510,36 @@ impl bn::Entity for En {
                         if p != pos
                             && let Some(_e) = cmd.get_ent(p)
                         {
+                            dooring = true;
                             // Hack to stop the game crashing when an entity is displaced
                             // upon entering the room.
                             let mut e_pos = p;
                             if e_pos == nx {
-                                e_pos = nx - pos + e_pos; 
+                                e_pos = nx - pos + e_pos;
                             }
                             cmd.queue(bn::Cmd::new_on(e_pos).modify_entity(Box::new(
-                                        move |e: &mut En| {
-                                            e.dormant = false;
-                                            e.acted = true;
-                                        },
+                                move |e: &mut En| {
+                                    e.dormant = false;
+                                    e.acted = true;
+                                    unsafe { ENEMIES_REMAINING += 1 };
+                                },
                             )));
-                            unsafe { ENEMIES_REMAINING += 1 };
                         }
                     }
 
-                    if !doors.is_empty() && unsafe { ENEMIES_REMAINING != 0 } {
+                    if !doors.is_empty() && dooring  {
                         // Lock the doors
                         for door in doors {
                             cmd.queue(bn::Cmd::new_on(door).create_entity(En::new(
-                                        1,
-                                        false,
-                                        vec![ActionType::Wait],
-                                        WALL_SENTRY_CHAR.with(WALL_SENTRY_CLR),
-                                        Special::WallSentry,
-                                        Vec::new(),
-                                        AtkPat::empty(),
-                                        false,
+                                // Little uranium reference for you there.
+                                92,
+                                false,
+                                vec![ActionType::Wait],
+                                WALL_SENTRY_CHAR.with(WALL_SENTRY_CLR),
+                                Special::WallSentry,
+                                Vec::new(),
+                                AtkPat::empty(),
+                                false,
                             )));
                         }
                     }
@@ -546,11 +551,19 @@ impl bn::Entity for En {
         if acted {
             if self.is_player {
                 unsafe { GLOBAL_TIME += 1 }
-                update_entities(cmd);
+                if unsafe { ENEMIES_REMAINING != 0 } {
+                    update_entities(cmd);
+                }
             } else {
-                cmd.queue(bn::Cmd::new_here().modify_entity(Box::new(|e: &mut En| {
-                    e.acted = true;
-                })));
+                cmd.queue(
+                    bn::Cmd::new_here().modify_entity(Box::new(move |e: &mut En| {
+                        e.acted = true;
+                        e.count = new_count;
+                        if e.count >= e.actions.len() {
+                            e.count = 0;
+                        }
+                    })),
+                );
             }
         }
     }
