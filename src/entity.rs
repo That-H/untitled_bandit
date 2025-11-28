@@ -418,6 +418,11 @@ impl bn::Entity for En {
                             pos,
                         );
                     }
+                    ActionType::Arbitrary(clos) => {
+                        let cmds = clos(&*cmd, self, pos);
+                        cmd.queue_many(cmds);
+                        acted = true;
+                    }
                 }
                 (nx, acted, new_count)
             },
@@ -551,6 +556,7 @@ impl bn::Entity for En {
         if acted {
             if self.is_player {
                 unsafe { GLOBAL_TIME += 1 }
+                // Prevents enemies from being allowed to act if we just walked in.
                 if unsafe { ENEMIES_REMAINING != 0 } {
                     update_entities(cmd);
                 }

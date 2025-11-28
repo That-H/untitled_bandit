@@ -272,4 +272,6 @@ pub enum ActionType {
         usize,
         Box<fn(&bn::Map<entity::En>, &entity::En, Point) -> bool>,
     ),
+    /// Uses the provided function to generate [commands](bn::Cmd) directly, given the environment.
+    Arbitrary(Box<fn(&bn::Map<entity::En>, &entity::En, Point) -> Vec<bn::Cmd<entity::En>>>)
 }
