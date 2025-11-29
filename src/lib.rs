@@ -261,6 +261,8 @@ pub enum ActionType {
     Pathfind,
     /// Do nothing.
     Wait,
+    /// Does both actions, regardless of success.
+    Multi(Box<ActionType>, Box<ActionType>),
     /// Does the first action, and if it fails, does the second one.
     Chain(Box<ActionType>, Box<ActionType>),
     /// Does the action at the first idx given if the predicate evaluates to true,
@@ -273,5 +275,5 @@ pub enum ActionType {
         Box<fn(&bn::Map<entity::En>, &entity::En, Point) -> bool>,
     ),
     /// Uses the provided function to generate [commands](bn::Cmd) directly, given the environment.
-    Arbitrary(Box<fn(&bn::Map<entity::En>, &entity::En, Point) -> Vec<bn::Cmd<entity::En>>>)
+    Arbitrary(Box<fn(&bn::Map<entity::En>, &entity::En, Point) -> Vec<bn::Cmd<entity::En>>>),
 }

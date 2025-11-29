@@ -21,6 +21,8 @@ const TERMINAL_HGT: u16 = 30;
 const WINDOW_WIDTH: u16 = 40;
 const WINDOW_HEIGHT: u16 = 20;
 const ARROWS: [char; 4] = ['↓', '←', '↑', '→'];
+// This does look like a key when printed.
+const KEY: char = '⚷';
 
 // All constants below describe the index of the window container that
 // the corresponding window is located at, or things about the window.
@@ -29,7 +31,7 @@ const STATS: usize = 1;
 const STATS_POS: Point = Point::new(10, 5);
 const STATS_WID: usize = 15;
 const ATKS: usize = 2;
-const ATKS_POS: Point = Point::new(10, 12);
+const ATKS_POS: Point = Point::new(10, 13);
 const ATKS_WID: usize = 9;
 
 // Contains the entity templates.
@@ -60,108 +62,175 @@ fn create_conveyor(disp: Point, revealed: bool) -> Tile {
     }
 }
 
+fn get_exit(revealed: bool) -> Tile {
+    Tile {
+        ch: Some('>'.blue()),
+        blocking: false,
+        empt: false,
+        revealed,
+        door: None,
+        slippery: false,
+        step_effect: Some(Box::new(|_, _| { 
+            unsafe { 
+                if ENEMIES_REMAINING == 0 {
+                    NEXT_FLOOR = true
+                }
+            }
+            Vec::new()
+        }))
+    }
+}
+
 fn main() {
     // Rng used for map generation. Has to be separate to ensure determinism
     // with the map and its contents.
     let mut floor_rng = rand::rngs::StdRng::from_os_rng();
-
-    // Generate a map.
-    let (grid, rooms) = map_gen::map_gen(ROOMS, MAX_WIDTH, MIN_WIDTH, &mut floor_rng);
-
+    
+    // Map used through the game.
     let mut map: bn::Map<En> = bn::Map::new(MAP_WIDTH, MAP_HEIGHT);
 
+    // Raw mode required for windowed to work correctly.
     terminal::enable_raw_mode();
     execute!(io::stdout(), terminal::Clear(terminal::ClearType::All));
 
-    for y in -(((MAP_HEIGHT / 2) + MAP_OFFSET) as i32)..(MAP_HEIGHT / 2 + MAP_OFFSET) as i32 {
-        for x in -(((MAP_WIDTH / 2) + MAP_OFFSET) as i32)..(MAP_WIDTH / 2 + MAP_OFFSET) as i32 {
-            let pos = Point::new(x, y);
-            let mut blocking = false;
-            let mut door = None;
-            let ch = match grid.get(&pos) {
-                Some(cl) => match cl {
-                    map_gen::Cell::Wall(_) => {
-                        blocking = true;
-                        None
+    let (templates, elites) = templates::get_templates();
+
+    let costs = [10, 25, 35, 40, 50, 100];
+    let elite_costs = [50];
+
+    let get_temp = |budget: u32,
+                    rng: &mut rand::rngs::StdRng,
+                    elite: bool|
+     -> Option<(&EntityTemplate, u32)> {
+        let idx = if elite {
+            rng.random_range(0..elites.len())
+        } else {
+            let max_idx = match costs.binary_search(&budget) {
+                Ok(idx) => idx,
+                Err(idx) => {
+                    if idx == 0 {
+                        return None;
+                    } else {
+                        idx - 1
                     }
-                    map_gen::Cell::Inner(_) => {
-                        blocking = false;
-                        None
-                    }
-                    map_gen::Cell::Door(id1, id2) => {
-                        blocking = false;
-                        door = Some((rooms[*id1], rooms[*id2]));
-                        Some('/'.yellow())
-                    }
-                },
-                None => None,
-            };
-            let revealed = rooms[0].contains(Point::new(x, y));
-            let t = if floor_rng.random_bool(0.0) && !blocking && door.is_none() {
-                create_conveyor(
-                    *Point::ORIGIN
-                        .get_all_adjacent()
-                        .choose(&mut floor_rng)
-                        .unwrap(),
-                    revealed,
-                )
-            } else {
-                Tile {
-                    ch,
-                    blocking,
-                    empt: false,
-                    revealed,
-                    slippery: false,
-                    door,
-                    step_effect: None,
                 }
             };
-
-            map.insert_tile(t, pos);
-        }
-    }
-
-    let templates = templates::get_templates();
-
-    let costs = [10, 25, 35, 40, 50];
-
-    // Create the player.
-    let pl = templates::get_player();
-
-    map.insert_entity(pl, unsafe { PLAYER });
-
-    let get_temp = |budget: u32, rng: &mut rand::rngs::StdRng| -> Option<(&EntityTemplate, u32)> {
-        let max_idx = match costs.binary_search(&budget) {
-            Ok(idx) => idx,
-            Err(idx) => {
-                if idx == 0 {
-                    return None;
-                } else {
-                    idx - 1
-                }
-            }
+            rng.random_range(0..=max_idx)
         };
-        let idx = rng.random_range(0..=max_idx);
-
-        Some((&templates[idx], costs[idx]))
+        let templates = if elite { &elites } else { &templates };
+        let cost = if elite { elite_costs[idx] } else { costs[idx] };
+        if cost <= budget {
+            Some((&templates[idx], cost))
+        } else {
+            None
+        }
     };
 
-    // Generate enemies.
-    for r in rooms.iter().skip(1) {
-        let mut budget = (r.wid * r.hgt) as u32 / 2;
-        let mut cells: Vec<Point> = r.inner_cells().collect();
-        cells.shuffle(&mut floor_rng);
+    let gen_floor = |map: &mut bandit::Map<En>, rng: &mut rand::rngs::StdRng, floor_num: u32| {
+        // Create the player if it is the first floor, otherwise get them.
+        let pl = if floor_num == 0 {
+            templates::get_player()
+        } else {
+            map.get_ent(unsafe { PLAYER }).unwrap().clone()
+        };
+        
+        // Reinitialise the map.
+        *map = bandit::Map::new(0, 0);
 
-        'enemy_gen: while let Some((temp, cost)) = get_temp(budget, &mut floor_rng) {
-            budget -= cost;
-            // Exit early if there is no where to place the entity.
-            let Some(nx) = cells.pop() else {
-                break 'enemy_gen;
-            };
+        unsafe { PLAYER = Point::ORIGIN }
+        map.insert_entity(pl, unsafe { PLAYER });
+    
+        // Generate the rooms of the map.
+        let (grid, rooms) = map_gen::map_gen(ROOMS, MAX_WIDTH, MIN_WIDTH, rng);
 
-            map.insert_entity(En::from_template(temp, false, true), nx);
+        for y in -(((MAP_HEIGHT / 2) + MAP_OFFSET) as i32)..(MAP_HEIGHT / 2 + MAP_OFFSET) as i32 {
+            for x in -(((MAP_WIDTH / 2) + MAP_OFFSET) as i32)..(MAP_WIDTH / 2 + MAP_OFFSET) as i32 {
+                let pos = Point::new(x, y);
+                let mut blocking = false;
+                let mut door = None;
+                let ch = match grid.get(&pos) {
+                    Some(cl) => match cl {
+                        map_gen::Cell::Wall(_) => {
+                            blocking = true;
+                            None
+                        }
+                        map_gen::Cell::Inner(_) => {
+                            blocking = false;
+                            None
+                        }
+                        map_gen::Cell::Door(id1, id2) => {
+                            blocking = false;
+                            door = Some((rooms[*id1], rooms[*id2]));
+                            Some('/'.yellow())
+                        }
+                    },
+                    None => None,
+                };
+                let revealed = rooms[0].contains(Point::new(x, y));
+                let t = if rng.random_bool(0.0) && !blocking && door.is_none() {
+                    create_conveyor(
+                        *Point::ORIGIN
+                        .get_all_adjacent()
+                        .choose(rng)
+                        .unwrap(),
+                        revealed,
+                    )
+                } else {
+                    Tile {
+                        ch,
+                        blocking,
+                        empt: false,
+                        revealed,
+                        slippery: false,
+                        door,
+                        step_effect: None,
+                    }
+                };
+
+                map.insert_tile(t, pos);
+            }
         }
-    }
+
+        let mut done_exit = false;
+        // Generate enemies.
+        for r in rooms.iter().skip(1) {
+            let mut budget = (r.wid * r.hgt) as u32 / 2;
+            let mut cells: Vec<Point> = r.inner_cells().collect();
+            cells.shuffle(rng);
+            let mut elite = false;
+
+            // Eligible to be an exit room if there is one door to it.
+            if !done_exit {
+                for pos in r.edges() { 
+                    if let map_gen::Cell::Door(_, _) = grid.get(&pos).unwrap() {
+                        elite = !elite;
+                        if !elite {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if elite {
+                done_exit = true;
+                budget = 75;
+                map.insert_tile(get_exit(false), r.top_left() + Point::new(r.wid / 2, -r.hgt / 2));
+            }
+
+            'enemy_gen: while let Some((temp, cost)) = get_temp(budget, rng, elite) {
+                budget -= cost;
+                // Exit early if there is no where to place the entity.
+                let Some(nx) = cells.pop() else {
+                    break 'enemy_gen;
+                };
+
+                map.insert_entity(En::from_template(temp, false, true), nx);
+            }
+        }
+    };
+
+    gen_floor(&mut map, &mut floor_rng, unsafe { FLOORS_CLEARED });
+
     let mut handle = std::io::stdout();
     execute!(handle, cursor::Hide);
 
@@ -221,6 +290,13 @@ fn main() {
             add_line(
                 style::Color::Red,
                 &format!("HP: {}/{}", pl.hp.value(), pl.hp.max),
+                cur_win,
+                STATS_WID,
+            );
+            // Floor display.
+            add_line(
+                style::Color::Green,
+                &format!("Floor {}", unsafe { FLOORS_CLEARED }),
                 cur_win,
                 STATS_WID,
             );
@@ -361,6 +437,14 @@ fn main() {
                 if map.get_ent(PLAYER).unwrap().is_dead() {
                     println!("you are dead");
                     break 'main;
+                }
+
+                // Check if the player has left the floor.
+                if NEXT_FLOOR {
+                    FLOORS_CLEARED += 1;
+                    NEXT_FLOOR = false;
+                    gen_floor(&mut map, &mut floor_rng, FLOORS_CLEARED);
+                    display_map(&map, &mut win_cont);
                 }
             }
         }

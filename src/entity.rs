@@ -8,8 +8,6 @@ use bn::Entity;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// Direction the player should go in.
-pub static mut DIR: Point = Point::new(0, 0);
 /// Type of action the player will perform.
 pub static mut ACTION: ActionType = ActionType::Wait;
 /// Current position of player.
@@ -20,6 +18,10 @@ pub static mut DEAD: bool = false;
 pub static mut ENEMIES_REMAINING: usize = 0;
 /// Number of actions taken by the player.
 pub static mut GLOBAL_TIME: u32 = 0;
+/// Number of floors cleared.
+pub static mut FLOORS_CLEARED: u32 = 0;
+/// True when the floor should be regenerated.
+pub static mut NEXT_FLOOR: bool = false;
 
 const WALL_SENTRY_CHAR: char = '█';
 const WALL_SENTRY_CLR: style::Color = style::Color::Yellow;
@@ -162,7 +164,7 @@ impl bn::Entity for En {
             }
             // Highlight if about to act.
             match self.actions.get(self.count).unwrap() {
-                ActionType::Wait => self.ch,
+                ActionType::Wait | ActionType::Pathfind => self.ch,
                 _ => self.ch.on_red(),
             }
         } else {
@@ -174,6 +176,7 @@ impl bn::Entity for En {
     where
         Self: Sized,
     {
+        let mut pos = pos;
         if self.is_dead()
             && let Special::Not = self.special
         {
@@ -198,7 +201,6 @@ impl bn::Entity for En {
             Special::Not => (),
         }
 
-        let mut nx = None;
         let mut acted = false;
         let mut new_count = self.count + 1;
 
@@ -233,7 +235,7 @@ impl bn::Entity for En {
         };
 
         // Set all the acted values of entities to false.
-        let update_entities = |cmd: &mut bn::Commands<'_, Self>| {
+        let update_entities = move |cmd: &mut bn::Commands<'_, Self>| {
             let mut cmds = Vec::new();
             for (p, _e) in cmd.get_entities() {
                 let p = *p;
@@ -249,7 +251,7 @@ impl bn::Entity for En {
         // Perform a melee attack in the given direction, unless a ranged
         // attack is specified. In that case, the ranged attack at the provided index occurs.
         let do_attack =
-            |cmd: &mut bn::Commands<'_, Self>, dir: Point, is_ranged: bool, atk_idx: usize| {
+            |pos: Point, cmd: &mut bn::Commands<'_, Self>, dir: Point, is_ranged: bool, atk_idx: usize| {
                 let mut positions = Vec::new();
                 let effects: &[Effect] = if is_ranged {
                     let atk = &self.atks.ranged_atks[atk_idx];
@@ -283,12 +285,14 @@ impl bn::Entity for En {
                                 }
 
                                 if hit {
-                                    // Apply damage.
-                                    cmd.queue(bn::Cmd::new_on(target).modify_entity(Box::new(
-                                        move |e: &mut En| {
-                                            e.apply_dmg(dmg_inst);
-                                        },
-                                    )));
+                                    if cmd.get_ent(target).is_some() {
+                                        // Apply damage.
+                                        cmd.queue(bn::Cmd::new_on(target).modify_entity(Box::new(
+                                            move |e: &mut En| {
+                                                e.apply_dmg(dmg_inst);
+                                            },
+                                        )));
+                                    }
                                 } else if !is_ranged {
                                     cmd.queue(bn::Cmd::new_on(target).create_effect(
                                         self.atks.melee_atks[&dir][atk_idx].miss_fx.clone(),
@@ -304,16 +308,11 @@ impl bn::Entity for En {
         // Stupid shit to get a recursive closure.
         let handle_action_inner: Rc<
             RefCell<
-                Box<
-                    dyn Fn(
-                        ActionType,
-                        &mut bn::Commands<En>,
-                        &En,
-                        Point,
-                    ) -> (Option<Point>, bool, usize),
-                >,
+                Box<dyn Fn(ActionType, &mut bn::Commands<En>, &En, Point) -> (Point, bool, usize)>,
             >,
-        > = Rc::new(RefCell::new(Box::new(|_, _, _, _| (None, false, 0))));
+        > = Rc::new(RefCell::new(Box::new(|_, _, _, _| {
+            (Point::ORIGIN, false, 0)
+        })));
 
         let handle_action = Rc::clone(&handle_action_inner);
 
@@ -321,8 +320,8 @@ impl bn::Entity for En {
             move |act: ActionType,
                   cmd: &mut bn::Commands<En>,
                   cur_en: &En,
-                  pos: Point|
-                  -> (Option<Point>, bool, usize) {
+                  mut pos: Point|
+                  -> (Point, bool, usize) {
                 let mut acted = false;
                 let mut nx: Option<Point> = None;
                 let mut new_count = cur_en.count + 1;
@@ -339,7 +338,7 @@ impl bn::Entity for En {
                                             && (e.is_player ^ cur_en.is_player)
                                             && !e.dormant
                                         {
-                                            do_attack(cmd, disp, false, n);
+                                            do_attack(pos, cmd, disp, false, n);
                                             acted = true;
                                             break 'outer;
                                         }
@@ -366,7 +365,7 @@ impl bn::Entity for En {
                         if let Some((atk_dir, i)) = self.atks.melee_hit_from(pos, unsafe { PLAYER })
                         {
                             acted = true;
-                            do_attack(cmd, atk_dir, false, i);
+                            do_attack(pos, cmd, atk_dir, false, i);
                         }
                     }
                     ActionType::Fire(idx) => {
@@ -375,7 +374,7 @@ impl bn::Entity for En {
                             let range = cur_en.atks.ranged_atks[idx].range;
                             if let Some(p) = get_closest(cmd, pos, range, !cur_en.is_player) {
                                 acted = true;
-                                do_attack(cmd, p - pos, true, idx)
+                                do_attack(pos, cmd, p - pos, true, idx)
                             }
                         }
                     }
@@ -391,7 +390,8 @@ impl bn::Entity for En {
                         {
                             match path.get(1) {
                                 Some(path_pos) if *path_pos != unsafe { PLAYER } => {
-                                    nx = Some(*path_pos)
+                                    nx = Some(*path_pos);
+                                    acted = true;
                                 }
                                 _ => (),
                             }
@@ -401,17 +401,17 @@ impl bn::Entity for En {
                         acted = true;
                     }
                     ActionType::Chain(first, fail) => {
-                        (nx, acted, new_count) =
+                        (pos, acted, new_count) =
                             handle_action.borrow()((*first).clone(), cmd, cur_en, pos);
                         if !acted {
-                            (nx, _, new_count) =
+                            (pos, _, new_count) =
                                 handle_action.borrow()((*fail).clone(), cmd, cur_en, pos);
                             acted = true;
                         }
                     }
                     ActionType::CondBranch(idx_t, idx_f, clos) => {
                         let nx_idx = if clos(&*cmd, self, pos) { idx_t } else { idx_f };
-                        (nx, acted, new_count) = handle_action.borrow()(
+                        (pos, acted, new_count) = handle_action.borrow()(
                             cur_en.actions[nx_idx].clone(),
                             cmd,
                             cur_en,
@@ -423,8 +423,105 @@ impl bn::Entity for En {
                         cmd.queue_many(cmds);
                         acted = true;
                     }
+                    ActionType::Multi(first, second) => {
+                        (pos, _, _) = handle_action.borrow()((*first).clone(), cmd, cur_en, pos);
+                        (pos, acted, new_count) =
+                            handle_action.borrow()((*second).clone(), cmd, cur_en, pos);
+                    }
                 }
-                (nx, acted, new_count)
+
+                if let Some(nx) = nx {
+                    cmd.queue(bn::Cmd::new_here().move_to(nx));
+
+                    // Do anything that the tile wants from us.
+                    if let Some(t) = cmd.get_map(nx) {
+                        let slip = t.slippery;
+
+                        if let Some(ref ef) = t.step_effect {
+                            cmd.queue_many(ef(nx, &*cmd));
+                        }
+                        if slip {
+                            cmd.queue(
+                                bn::Cmd::new_here().modify_entity(Box::new(move |e: &mut En| {
+                                    e.vel = Some(nx - pos)
+                                })),
+                            );
+                        }
+                    }
+
+                    if self.is_player {
+                        unsafe { PLAYER = nx }
+                    }
+
+                    // Check this is a door, and reveal the room if we move into it.
+                    if self.is_player
+                        && let Some(t) = cmd.get_map(pos)
+                    {
+                        // Door check.
+                        if let Some((room1, room2)) = &t.door {
+                            let rect = if room1.contains(nx) { room1 } else { room2 };
+                            let mut doors = Vec::new();
+                            // Flag to say whether or not we are locking all the doors due to
+                            // an enemy being detected in the room.
+                            let mut dooring = false;
+
+                            // Iterate over all cells of the room and reveal them.
+                            for p in rect.cells() {
+                                cmd.queue(
+                                    bn::Cmd::new_on(p)
+                                        .modify_tile(Box::new(|t: &mut Tile| t.revealed = true)),
+                                );
+
+                                // Mark the position for locking if it is a door.
+                                if let Some(t) = cmd.get_map(p)
+                                    && t.door.is_some()
+                                {
+                                    doors.push(p);
+                                }
+
+                                // Wake everyone up.
+                                if p != pos
+                                    && let Some(_e) = cmd.get_ent(p)
+                                {
+                                    dooring = true;
+                                    // Hack to stop the game crashing when an entity is displaced
+                                    // upon entering the room.
+                                    let mut e_pos = p;
+                                    if e_pos == nx {
+                                        e_pos = nx - pos + e_pos;
+                                    }
+                                    cmd.queue(bn::Cmd::new_on(e_pos).modify_entity(Box::new(
+                                        move |e: &mut En| {
+                                            e.dormant = false;
+                                            e.acted = true;
+                                            unsafe { ENEMIES_REMAINING += 1 };
+                                        },
+                                    )));
+                                }
+                            }
+
+                            if !doors.is_empty() && dooring {
+                                // Lock the doors
+                                for door in doors {
+                                    cmd.queue(bn::Cmd::new_on(door).create_entity(En::new(
+                                        // Little uranium reference for you there.
+                                        92,
+                                        false,
+                                        vec![ActionType::Wait],
+                                        WALL_SENTRY_CHAR.with(WALL_SENTRY_CLR),
+                                        Special::WallSentry,
+                                        Vec::new(),
+                                        AtkPat::empty(),
+                                        false,
+                                    )));
+                                }
+                            }
+                        }
+                    }
+                    pos = nx;
+                }
+
+                (pos, acted, new_count)
             },
         );
 
@@ -435,10 +532,10 @@ impl bn::Entity for En {
 
             if verify_pos(cmd, cur_nx) {
                 let t = cmd.get_map(cur_nx).unwrap();
-                nx = Some(cur_nx);
                 if !t.slippery {
                     stop = true;
                 }
+                handle_action_inner.borrow()(ActionType::TryMove(v), cmd, self, pos);
             } else {
                 stop = true;
             }
@@ -459,101 +556,11 @@ impl bn::Entity for En {
             } else {
                 self.actions[self.count].clone()
             };
-
-            (nx, acted, new_count) = (handle_action_inner.borrow())(cur_act, cmd, self, pos);
-        }
-
-        if let Some(nx) = nx {
-            cmd.queue(bn::Cmd::new_here().move_to(nx));
-
-            // Do anything that the tile wants from us.
-            if let Some(t) = cmd.get_map(nx) {
-                let slip = t.slippery;
-
-                if let Some(ref ef) = t.step_effect {
-                    cmd.queue_many(ef(nx, &*cmd));
-                }
-                if slip {
-                    cmd.queue(
-                        bn::Cmd::new_here()
-                            .modify_entity(Box::new(move |e: &mut En| e.vel = Some(nx - pos))),
-                    );
-                }
-            }
-
-            if self.is_player {
-                unsafe { PLAYER = nx }
-            }
-
-            // Check this is a door, and reveal the room if we move into it.
-            if self.is_player
-                && let Some(t) = cmd.get_map(pos)
-            {
-                // Door check.
-                if let Some((room1, room2)) = &t.door {
-                    let rect = if room1.contains(nx) { room1 } else { room2 };
-                    let mut doors = Vec::new();
-                    // Flag to say whether or not we are locking all the doors due to 
-                    // an enemy being detected in the room.
-                    let mut dooring = false;
-
-                    // Iterate over all cells of the room and reveal them.
-                    for p in rect.cells() {
-                        cmd.queue(
-                            bn::Cmd::new_on(p)
-                                .modify_tile(Box::new(|t: &mut Tile| t.revealed = true)),
-                        );
-
-                        // Mark the position for locking if it is a door.
-                        if let Some(t) = cmd.get_map(p)
-                            && t.door.is_some()
-                        {
-                            doors.push(p);
-                        }
-
-                        // Wake everyone up.
-                        if p != pos
-                            && let Some(_e) = cmd.get_ent(p)
-                        {
-                            dooring = true;
-                            // Hack to stop the game crashing when an entity is displaced
-                            // upon entering the room.
-                            let mut e_pos = p;
-                            if e_pos == nx {
-                                e_pos = nx - pos + e_pos;
-                            }
-                            cmd.queue(bn::Cmd::new_on(e_pos).modify_entity(Box::new(
-                                move |e: &mut En| {
-                                    e.dormant = false;
-                                    e.acted = true;
-                                    unsafe { ENEMIES_REMAINING += 1 };
-                                },
-                            )));
-                        }
-                    }
-
-                    if !doors.is_empty() && dooring  {
-                        // Lock the doors
-                        for door in doors {
-                            cmd.queue(bn::Cmd::new_on(door).create_entity(En::new(
-                                // Little uranium reference for you there.
-                                92,
-                                false,
-                                vec![ActionType::Wait],
-                                WALL_SENTRY_CHAR.with(WALL_SENTRY_CLR),
-                                Special::WallSentry,
-                                Vec::new(),
-                                AtkPat::empty(),
-                                false,
-                            )));
-                        }
-                    }
-                }
-            }
+            (_, acted, new_count) = handle_action_inner.borrow()(cur_act, cmd, self, pos);
         }
 
         // Increase global time if player, otherwise set the flag to prevent multi actions.
-        if acted {
+        if acted || !self.is_player {
             if self.is_player {
                 unsafe { GLOBAL_TIME += 1 }
                 // Prevents enemies from being allowed to act if we just walked in.

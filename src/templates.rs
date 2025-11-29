@@ -37,6 +37,29 @@ pub fn get_hvy_atks(dmg: u32, chars: impl IntoIterator<Item = char>, clr: style:
     ))
 }
 
+/// Creates a holy attack.
+pub fn get_holiness(dmg: u32, duration: usize) -> AtkPat {
+    let mut atks = AtkPat::empty();
+    let mut places = Point::ORIGIN.get_all_adjacent();
+    let mut fx: Vec<(_, _)> = places
+        .iter()
+        .copied()
+        .zip(THICC_FOUR_POS_ATK.into_iter())
+        .map(|(p, ch)| (p, Vfx::new_opaque(ch.yellow(), duration)))
+        .collect();
+    places.push(Point::new(0, -2));
+    fx.push((Point::new(0, -2), Vfx::new_opaque('║'.yellow(), duration)));
+    fx.push((Point::new(0, 0), Vfx::new_opaque('╬'.yellow(), duration)));
+    let melee = MeleeAtk::new(
+        vec![Effect::DoDmg(DmgInst::dmg(dmg, 1.0))],
+        places,
+        fx,
+        Vfx::new_opaque('?'.stylize(), 7),
+    );
+    atks.melee_atks.insert(Point::new(0, -1), vec![melee]);
+    atks
+}
+
 /// Creates the player entity.
 pub fn get_player() -> En {
     En::new(
@@ -51,8 +74,9 @@ pub fn get_player() -> En {
     )
 }
 
-/// Return a vector of entity templates for use in the game.
-pub fn get_templates() -> Vec<EntityTemplate> {
+/// Return a vector of entity templates for use in the game. First vector is for normal enemies,
+/// second is for elite enemies.
+pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
     // Generate knight moves without typing them all out.
     let mut p1 = Point::new(2, 1);
     let mut p2 = Point::new(2, -1);
@@ -68,6 +92,19 @@ pub fn get_templates() -> Vec<EntityTemplate> {
 
     // Manhattan movement.
     let manhattan = Point::ORIGIN.get_all_adjacent();
+
+    // Diagonal movement.
+    let mut diag = manhattan.clone();
+    for p in diag.iter_mut() {
+        *p = Point::new(p.x + p.y, p.y - p.x);
+    }
+
+    // Diagonal movement up to three spaces.
+    let mut diag_plus = diag.clone();
+    for p in diag.iter() {
+        diag_plus.push(*p * 2);
+        diag_plus.push(*p * 3);
+    }
 
     // Manhattan movement with diagonal.
     let _total = Point::ORIGIN.get_all_adjacent_diagonal();
@@ -144,69 +181,87 @@ pub fn get_templates() -> Vec<EntityTemplate> {
             .append(&mut v.clone());
     }
 
-    vec![
-        EntityTemplate {
-            max_hp: 3,
-            actions: vec![
-                ActionType::Wait,
-                ActionType::Chain(
+    (
+        vec![
+            EntityTemplate {
+                max_hp: 3,
+                actions: vec![
+                    ActionType::Wait,
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                ],
+                movement: manhattan.clone(),
+                ch: 'e'.stylize(),
+                atks: default_atks.clone(),
+            },
+            EntityTemplate {
+                max_hp: 4,
+                actions: vec![
+                    ActionType::Wait,
+                    ActionType::Wait,
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                ],
+                movement: manhattan.clone(),
+                ch: 'h'.stylize(),
+                atks: heavy_default_atks.clone(),
+            },
+            EntityTemplate {
+                max_hp: 2,
+                actions: vec![ActionType::Chain(
                     Box::new(ActionType::TryMelee),
                     Box::new(ActionType::Pathfind),
-                ),
-            ],
-            movement: manhattan.clone(),
-            ch: 'e'.stylize(),
-            atks: default_atks.clone(),
-        },
-        EntityTemplate {
-            max_hp: 4,
+                )],
+                movement: manhattan.clone(),
+                ch: 'l'.stylize(),
+                atks: spear.clone(),
+            },
+            EntityTemplate {
+                max_hp: 2,
+                actions: vec![
+                    ActionType::Wait,
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                ],
+                movement: knight.clone(),
+                ch: 'k'.stylize(),
+                atks: diagonal_atks.clone(),
+            },
+            EntityTemplate {
+                max_hp: 3,
+                actions: vec![
+                    ActionType::Wait,
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                ],
+                movement: manhattan.clone(),
+                ch: 'w'.stylize(),
+                atks: wizardry_plus.clone(),
+            },
+        ],
+        // Elites start here.
+        vec![EntityTemplate {
+            max_hp: 7,
             actions: vec![
-                ActionType::Wait,
-                ActionType::Wait,
-                ActionType::Chain(
-                    Box::new(ActionType::TryMelee),
+                ActionType::Pathfind,
+                ActionType::Pathfind,
+                ActionType::Multi(
                     Box::new(ActionType::Pathfind),
-                ),
-            ],
-            movement: manhattan.clone(),
-            ch: 'h'.stylize(),
-            atks: heavy_default_atks.clone(),
-        },
-        EntityTemplate {
-            max_hp: 2,
-            actions: vec![ActionType::Chain(
-                Box::new(ActionType::TryMelee),
-                Box::new(ActionType::Pathfind),
-            )],
-            movement: manhattan.clone(),
-            ch: 'l'.stylize(),
-            atks: spear.clone(),
-        },
-        EntityTemplate {
-            max_hp: 2,
-            actions: vec![
-                ActionType::Wait,
-                ActionType::Chain(
                     Box::new(ActionType::TryMelee),
-                    Box::new(ActionType::Pathfind),
                 ),
-            ],
-            movement: knight.clone(),
-            ch: 'k'.stylize(),
-            atks: diagonal_atks.clone(),
-        },
-        EntityTemplate {
-            max_hp: 3,
-            actions: vec![
                 ActionType::Wait,
-                ActionType::Chain(
-                    Box::new(ActionType::TryMelee),
-                    Box::new(ActionType::Pathfind),
-                ),
             ],
-            movement: manhattan.clone(),
-            ch: 'w'.stylize(),
-            atks: wizardry_plus.clone(),
-        },
-    ]
+            movement: diag_plus.clone(),
+            ch: 'B'.stylize(),
+            atks: get_holiness(3, 15),
+        }],
+    )
 }
