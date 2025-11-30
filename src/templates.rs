@@ -127,6 +127,12 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
         EIGHT_POS_ATK.into_iter(),
     ));
 
+    // Like diagonal_atks, but without the default_atks in it.
+    let mut pure_diag_atks = diagonal_atks.clone();
+    for p in Point::ORIGIN.get_all_adjacent() {
+        pure_diag_atks.melee_atks.remove(&p);
+    }
+
     // Long default attack.
     let mut spear = default_atks.clone();
 
@@ -232,6 +238,16 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 movement: knight.clone(),
                 ch: 'k'.stylize(),
                 atks: diagonal_atks.clone(),
+            },
+            EntityTemplate {
+                max_hp: 3,
+                actions: vec![ActionType::Multi(
+                    Box::new(ActionType::Pathfind),
+                    Box::new(ActionType::TryMelee),
+                )],
+                movement: diag.clone(),
+                ch: 'b'.stylize(),
+                atks: pure_diag_atks.clone(),
             },
             EntityTemplate {
                 max_hp: 3,

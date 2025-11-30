@@ -22,7 +22,15 @@ pub static mut GLOBAL_TIME: u32 = 0;
 pub static mut FLOORS_CLEARED: u32 = 0;
 /// True when the floor should be regenerated.
 pub static mut NEXT_FLOOR: bool = false;
+/// List of all keys the player has collected.
+pub static mut KEYS_COLLECTED: Vec<u32> = Vec::new();
 
+pub const KEY_CLRS: [style::Color; 4] = [
+    style::Color::DarkRed,
+    style::Color::Green,
+    style::Color::Blue,
+    style::Color::Yellow,
+];
 const WALL_SENTRY_CHAR: char = '█';
 const WALL_SENTRY_CLR: style::Color = style::Color::Yellow;
 
@@ -176,7 +184,6 @@ impl bn::Entity for En {
     where
         Self: Sized,
     {
-        let mut pos = pos;
         if self.is_dead()
             && let Special::Not = self.special
         {
@@ -250,60 +257,63 @@ impl bn::Entity for En {
 
         // Perform a melee attack in the given direction, unless a ranged
         // attack is specified. In that case, the ranged attack at the provided index occurs.
-        let do_attack =
-            |pos: Point, cmd: &mut bn::Commands<'_, Self>, dir: Point, is_ranged: bool, atk_idx: usize| {
-                let mut positions = Vec::new();
-                let effects: &[Effect] = if is_ranged {
-                    let atk = &self.atks.ranged_atks[atk_idx];
-                    positions.push(pos + dir);
-                    &atk.effects
-                } else {
-                    let atk = &self.atks.melee_atks[&dir][atk_idx];
-                    for (p, v) in atk.fx.iter() {
-                        cmd.queue(bn::Cmd::new_on(*p + pos).create_effect(v.clone()));
-                    }
-                    positions.extend(atk.place.iter().map(|p| *p + pos));
-                    &atk.effects
-                };
+        let do_attack = |pos: Point,
+                         cmd: &mut bn::Commands<'_, Self>,
+                         dir: Point,
+                         is_ranged: bool,
+                         atk_idx: usize| {
+            let mut positions = Vec::new();
+            let effects: &[Effect] = if is_ranged {
+                let atk = &self.atks.ranged_atks[atk_idx];
+                positions.push(pos + dir);
+                &atk.effects
+            } else {
+                let atk = &self.atks.melee_atks[&dir][atk_idx];
+                for (p, v) in atk.fx.iter() {
+                    cmd.queue(bn::Cmd::new_on(*p + pos).create_effect(v.clone()));
+                }
+                positions.extend(atk.place.iter().map(|p| *p + pos));
+                &atk.effects
+            };
 
-                for target in positions.into_iter() {
-                    for ef in effects {
-                        match ef {
-                            Effect::DoDmg(dmg_inst) => {
-                                let dmg_inst = *dmg_inst;
-                                let hit = rand::random_bool(dmg_inst.acc);
+            for target in positions.into_iter() {
+                for ef in effects {
+                    match ef {
+                        Effect::DoDmg(dmg_inst) => {
+                            let dmg_inst = *dmg_inst;
+                            let hit = rand::random_bool(dmg_inst.acc);
 
-                                // Draw line with closure for ranged attacks and display hit_fx if necessary.
-                                if is_ranged {
-                                    let atk = &self.atks.ranged_atks[atk_idx];
-                                    let mut line: Vec<Point> =
-                                        Point::plot_line(pos, target).skip(1).collect();
-                                    line.push(target);
-                                    for (p, v) in (atk.line_fx)(hit, line) {
-                                        cmd.queue(bn::Cmd::new_on(p).create_effect(v));
-                                    }
-                                }
-
-                                if hit {
-                                    if cmd.get_ent(target).is_some() {
-                                        // Apply damage.
-                                        cmd.queue(bn::Cmd::new_on(target).modify_entity(Box::new(
-                                            move |e: &mut En| {
-                                                e.apply_dmg(dmg_inst);
-                                            },
-                                        )));
-                                    }
-                                } else if !is_ranged {
-                                    cmd.queue(bn::Cmd::new_on(target).create_effect(
-                                        self.atks.melee_atks[&dir][atk_idx].miss_fx.clone(),
-                                    ));
+                            // Draw line with closure for ranged attacks and display hit_fx if necessary.
+                            if is_ranged {
+                                let atk = &self.atks.ranged_atks[atk_idx];
+                                let mut line: Vec<Point> =
+                                    Point::plot_line(pos, target).skip(1).collect();
+                                line.push(target);
+                                for (p, v) in (atk.line_fx)(hit, line) {
+                                    cmd.queue(bn::Cmd::new_on(p).create_effect(v));
                                 }
                             }
-                            Effect::Other(clos) => cmd.queue_many(clos(pos, target, &*cmd)),
+
+                            if hit {
+                                if cmd.get_ent(target).is_some() {
+                                    // Apply damage.
+                                    cmd.queue(bn::Cmd::new_on(target).modify_entity(Box::new(
+                                        move |e: &mut En| {
+                                            e.apply_dmg(dmg_inst);
+                                        },
+                                    )));
+                                }
+                            } else if !is_ranged {
+                                cmd.queue(bn::Cmd::new_on(target).create_effect(
+                                    self.atks.melee_atks[&dir][atk_idx].miss_fx.clone(),
+                                ));
+                            }
                         }
+                        Effect::Other(clos) => cmd.queue_many(clos(pos, target, &*cmd)),
                     }
                 }
-            };
+            }
+        };
 
         // Stupid shit to get a recursive closure.
         let handle_action_inner: Rc<
@@ -328,7 +338,15 @@ impl bn::Entity for En {
                 match act {
                     ActionType::TryMove(disp) => {
                         let cur_nx = pos + disp;
-                        if !cmd.get_map(cur_nx).unwrap().blocking {
+                        let (unlockable, possible) = match cmd.get_map(cur_nx) {
+                            Some(t) => { 
+                                let u = t.unlockable();
+                                (u, !t.blocking || u)
+                            },
+                            None => (false, false),
+                        };
+
+                        if possible {
                             // Check if there are any attacks that hit something in this direction,
                             // and if so, do the first one.
                             if let Some(atks) = cur_en.atks.melee_atks.get(&disp) {
@@ -356,6 +374,11 @@ impl bn::Entity for En {
                                     }
                                     nx = Some(cur_nx);
                                     acted = true;
+                                }
+                                // Unlock the door.
+                                if unlockable {
+                                    nx = None;
+                                    cmd.queue(bn::Cmd::new_on(cur_nx).modify_tile(Box::new(|t: &mut Tile| t.unlock())));
                                 }
                             }
                         }

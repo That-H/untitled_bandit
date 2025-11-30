@@ -1,3 +1,5 @@
+#![allow(static_mut_refs)]
+
 use crossterm::style::{self, Stylize};
 use rect::Rect;
 use std::fmt;
@@ -7,6 +9,8 @@ pub const DELAY: u64 = 30;
 pub const VFX_DELAY: u64 = 200;
 pub const MAP_OFFSET: usize = 0;
 pub const DIR_CHARS: [char; 4] = ['v', '<', '^', '>'];
+pub const DOOR_CHAR: char = '/';
+pub const DOOR_CLR: style::Color = style::Color::Yellow;
 
 pub use bandit as bn;
 pub use bn::Point;
@@ -30,6 +34,8 @@ pub struct Tile {
     pub ch: Option<StyleCh>,
     /// The rooms the tile connects.
     pub door: Option<(Rect, Rect)>,
+    /// Key type required to change this tile to not be blocking.
+    pub locked: Option<u32>,
     /// Whether the tile engages sliding.
     pub slippery: bool,
     /// Something that occurs when an entity steps on this tile. The arguments are the position
@@ -47,6 +53,24 @@ impl Tile {
             ..Self::default()
         }
     }
+
+    /// If the tile is locked and the corresponding key has been collected, unlocks the door.
+    pub fn unlock(&mut self) {
+        if self.unlockable() {
+            self.locked = None;
+            self.blocking = false;
+            self.ch = Some(DOOR_CHAR.with(DOOR_CLR));
+        }
+    }
+
+    /// Returns true if the corresponding key to the door has been collected.
+    pub fn unlockable(&self) -> bool {
+        if let Some(k) = self.locked && unsafe { crate::entity::KEYS_COLLECTED.contains(&k) } {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl Default for Tile {
@@ -59,6 +83,7 @@ impl Default for Tile {
             door: None,
             slippery: false,
             step_effect: None,
+            locked: None,
         }
     }
 }

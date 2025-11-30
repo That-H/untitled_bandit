@@ -1,4 +1,5 @@
 #![allow(unused_must_use)]
+#![allow(static_mut_refs)]
 
 use attacks::*;
 use bn::windowed;
@@ -11,7 +12,8 @@ use rand::{Rng, SeedableRng};
 use std::{collections::HashMap, io, thread};
 use untitled_bandit::*;
 
-const ROOMS: u32 = 50;
+const ROOMS: u32 = 16;
+const SPECIAL_ROOMS: u32 = 1;
 const MAX_WIDTH: i32 = 13;
 const MIN_WIDTH: i32 = 6;
 const MAP_WIDTH: usize = 300;
@@ -23,16 +25,20 @@ const WINDOW_HEIGHT: u16 = 20;
 const ARROWS: [char; 4] = ['↓', '←', '↑', '→'];
 // This does look like a key when printed.
 const KEY: char = '⚷';
+const EXIT_CLRS: [style::Color; 4] = KEY_CLRS;
 
 // All constants below describe the index of the window container that
 // the corresponding window is located at, or things about the window.
 const GAME: usize = 0;
 const STATS: usize = 1;
-const STATS_POS: Point = Point::new(10, 5);
+const STATS_POS: Point = Point::new(22, 4);
 const STATS_WID: usize = 15;
 const ATKS: usize = 2;
-const ATKS_POS: Point = Point::new(10, 13);
+const ATKS_POS: Point = Point::new(28, 13);
 const ATKS_WID: usize = 9;
+const KEYS: usize = 3;
+const KEYS_POS: Point = Point::new(83, 4);
+const KEYS_WID: usize = KEY_CLRS.len() * 2 + 1;
 
 // Contains the entity templates.
 mod templates;
@@ -59,25 +65,46 @@ fn create_conveyor(disp: Point, revealed: bool) -> Tile {
         slippery: false,
         door: None,
         step_effect,
+        locked: None,
     }
 }
 
-fn get_exit(revealed: bool) -> Tile {
+fn get_exit(revealed: bool, floor_num: usize) -> Tile {
     Tile {
-        ch: Some('>'.blue()),
+        ch: Some('>'.with(EXIT_CLRS[floor_num])),
         blocking: false,
         empt: false,
         revealed,
         door: None,
         slippery: false,
-        step_effect: Some(Box::new(|_, _| { 
-            unsafe { 
+        step_effect: Some(Box::new(|_, _| {
+            unsafe {
                 if ENEMIES_REMAINING == 0 {
                     NEXT_FLOOR = true
                 }
             }
             Vec::new()
-        }))
+        })),
+        locked: None,
+    }
+}
+
+fn get_key(revealed: bool, key_id: u32) -> Tile {
+    Tile {
+        ch: Some(KEY.with(KEY_CLRS[key_id as usize])),
+        blocking: false,
+        empt: false,
+        revealed,
+        door: None,
+        slippery: false,
+        step_effect: Some(Box::new(move |pos, _| {
+            unsafe { KEYS_COLLECTED.push(key_id) }
+            vec![bn::Cmd::new_on(pos).modify_tile(Box::new(|t: &mut Tile| {
+                t.step_effect = None;
+                t.ch = Some('.'.stylize());
+            }))]
+        })),
+        locked: None,
     }
 }
 
@@ -85,7 +112,7 @@ fn main() {
     // Rng used for map generation. Has to be separate to ensure determinism
     // with the map and its contents.
     let mut floor_rng = rand::rngs::StdRng::from_os_rng();
-    
+
     // Map used through the game.
     let mut map: bn::Map<En> = bn::Map::new(MAP_WIDTH, MAP_HEIGHT);
 
@@ -93,9 +120,15 @@ fn main() {
     terminal::enable_raw_mode();
     execute!(io::stdout(), terminal::Clear(terminal::ClearType::All));
 
-    let (templates, elites) = templates::get_templates();
+    let (mut templates, elites) = templates::get_templates();
 
-    let costs = [10, 25, 35, 40, 50, 100];
+    // Sort the costs and templates using those costs so that the templates do not have to be returned in sorted order.
+    // e, h, l, k, b, w
+    let mut costs = [12, 20, 45, 37, 34, 40];
+    let mut cost_iter = costs.iter();
+    templates.sort_by_cached_key(|_| cost_iter.next().unwrap());
+    costs.sort();
+
     let elite_costs = [50];
 
     let get_temp = |budget: u32,
@@ -133,21 +166,78 @@ fn main() {
         } else {
             map.get_ent(unsafe { PLAYER }).unwrap().clone()
         };
-        
+
         // Reinitialise the map.
         *map = bandit::Map::new(0, 0);
 
         unsafe { PLAYER = Point::ORIGIN }
         map.insert_entity(pl, unsafe { PLAYER });
-    
-        // Generate the rooms of the map.
-        let (grid, rooms) = map_gen::map_gen(ROOMS, MAX_WIDTH, MIN_WIDTH, rng);
 
+        // Generate the rooms of the map.
+        let (mut grid, mut rooms) = map_gen::map_gen(ROOMS - SPECIAL_ROOMS, MAX_WIDTH, MIN_WIDTH, rng);
+        
+        // Whether we have chosen an exit room yet.
+        let mut done_exit = false;
+        // Location of the door to the exit room.
+        let mut true_door = Point::ORIGIN;
+        // Rect id of the exit room so that the key room does not generate off of it.
+        let mut exit_id: usize = 0;
+
+        // Generate enemies.
+        for (n, r) in rooms.iter().enumerate().skip(1) {
+            let mut budget = (r.wid * r.hgt) as u32 / 2;
+            let mut cells: Vec<Point> = r.inner_cells().collect();
+            cells.shuffle(rng);
+            let mut elite = false;
+
+            // Eligible to be an exit room if there is one door to it.
+            if !done_exit {
+                for pos in r.edges() {
+                    if let map_gen::Cell::Door(_, _) = grid.get(&pos).unwrap() {
+                        elite = !elite;
+                        true_door = pos;
+                        exit_id = n;
+                        if !elite {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if elite {
+                done_exit = true;
+                budget = 75;
+                map.insert_tile(
+                    get_exit(false, floor_num as usize),
+                    r.top_left() + Point::new(r.wid / 2, -r.hgt / 2),
+                );
+            }
+
+            'enemy_gen: while let Some((temp, cost)) = get_temp(budget, rng, elite) {
+                budget -= cost;
+                // Exit early if there is no where to place the entity.
+                let Some(nx) = cells.pop() else {
+                    break 'enemy_gen;
+                };
+
+                map.insert_entity(En::from_template(temp, false, true), nx);
+            }
+        }
+
+        // Generate a new room specifically for the key.
+        map_gen::gen_rect_in(&mut rooms, &mut grid, rng, MIN_WIDTH, MAX_WIDTH, &[0, exit_id]);
+        let key_pos = *rooms.last().unwrap().inner_cells().collect::<Vec<Point>>().choose(rng).unwrap();
+
+        // Put the cells actually into the map.
         for y in -(((MAP_HEIGHT / 2) + MAP_OFFSET) as i32)..(MAP_HEIGHT / 2 + MAP_OFFSET) as i32 {
             for x in -(((MAP_WIDTH / 2) + MAP_OFFSET) as i32)..(MAP_WIDTH / 2 + MAP_OFFSET) as i32 {
                 let pos = Point::new(x, y);
                 let mut blocking = false;
                 let mut door = None;
+
+                // If there is already a tile there, don't overwrite it.
+                if map.get_map(pos).is_some() { continue };
+
                 let ch = match grid.get(&pos) {
                     Some(cl) => match cl {
                         map_gen::Cell::Wall(_) => {
@@ -169,12 +259,11 @@ fn main() {
                 let revealed = rooms[0].contains(Point::new(x, y));
                 let t = if rng.random_bool(0.0) && !blocking && door.is_none() {
                     create_conveyor(
-                        *Point::ORIGIN
-                        .get_all_adjacent()
-                        .choose(rng)
-                        .unwrap(),
+                        *Point::ORIGIN.get_all_adjacent().choose(rng).unwrap(),
                         revealed,
                     )
+                } else if pos == key_pos {
+                    get_key(false, floor_num)
                 } else {
                     Tile {
                         ch,
@@ -184,6 +273,7 @@ fn main() {
                         slippery: false,
                         door,
                         step_effect: None,
+                        locked: None,
                     }
                 };
 
@@ -191,42 +281,10 @@ fn main() {
             }
         }
 
-        let mut done_exit = false;
-        // Generate enemies.
-        for r in rooms.iter().skip(1) {
-            let mut budget = (r.wid * r.hgt) as u32 / 2;
-            let mut cells: Vec<Point> = r.inner_cells().collect();
-            cells.shuffle(rng);
-            let mut elite = false;
-
-            // Eligible to be an exit room if there is one door to it.
-            if !done_exit {
-                for pos in r.edges() { 
-                    if let map_gen::Cell::Door(_, _) = grid.get(&pos).unwrap() {
-                        elite = !elite;
-                        if !elite {
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if elite {
-                done_exit = true;
-                budget = 75;
-                map.insert_tile(get_exit(false), r.top_left() + Point::new(r.wid / 2, -r.hgt / 2));
-            }
-
-            'enemy_gen: while let Some((temp, cost)) = get_temp(budget, rng, elite) {
-                budget -= cost;
-                // Exit early if there is no where to place the entity.
-                let Some(nx) = cells.pop() else {
-                    break 'enemy_gen;
-                };
-
-                map.insert_entity(En::from_template(temp, false, true), nx);
-            }
-        }
+        let door = map.get_map_mut(true_door).unwrap();
+        door.ch = Some('╬'.with(KEY_CLRS[floor_num as usize]));
+        door.locked = Some(floor_num);
+        door.blocking = true;
     };
 
     gen_floor(&mut map, &mut floor_rng, unsafe { FLOORS_CLEARED });
@@ -243,6 +301,7 @@ fn main() {
     )));
     win_cont.add_win(windowed::Window::new(STATS_POS));
     win_cont.add_win(windowed::Window::new(ATKS_POS));
+    win_cont.add_win(windowed::Window::new(KEYS_POS));
 
     let delay = std::time::Duration::from_millis(DELAY);
     let vfx_delay = std::time::Duration::from_millis(VFX_DELAY);
@@ -357,6 +416,22 @@ fn main() {
 
             cur_win.outline_with('#'.grey());
 
+            // Inform the player of their current held keys.
+            cur_win = &mut win_cont.windows[KEYS];
+            cur_win.data.clear();
+            cur_win.data.push(vec![' '.stylize(); KEYS_WID]);
+
+            add_line(style::Color::White, "KEYS:", cur_win, KEYS_WID);
+            let mut next_line = Vec::new();
+            for (n, clr) in KEY_CLRS.iter().enumerate() {
+                next_line.push(' '.stylize());
+                next_line.push(KEY.with(if unsafe { KEYS_COLLECTED.contains(&(n as u32)) } { *clr } else { style::Color::DarkGrey }));
+            }
+            next_line.push(' '.stylize());
+            cur_win.data.push(next_line);
+            cur_win.data.push(vec![' '.stylize(); KEYS_WID]);
+
+            cur_win.outline_with('#'.grey());
             win_cont.refresh();
 
             // Print the screen.
