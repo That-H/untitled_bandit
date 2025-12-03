@@ -4,7 +4,8 @@ version = 4
 
 [[package]]
 name = "bandit"
-version = "0.4.0"
+version = "0.4.1"
+source = "git+https://github.com/That-H/bandit?tag=0.4.1#d72eb5e8f6abb915daa3270fad1f833f9ef30579"
 dependencies = [
  "point",
  "windowed",

@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 rect = { git = "https://github.com/That-H/rect", tag = "0.2.0" }
-bandit = { path = "../../rust_stuff/bandit", features = [] } 
+bandit = { git = "https://github.com/That-H/bandit", tag = "0.4.1", features = [] }
 cellular_automata = { path = "../../rust_stuff/cellular_automata" }
 crossterm = "0.29.0"
 rand = "0.9.2"

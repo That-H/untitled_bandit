@@ -5,7 +5,7 @@ and [crossterm][crossterm] for the convenient terminal handling.
 
 ## Gameplay 
 
-The game is a grid pased and turn based roguelike, with all enemies on screen acting only after the player takes their turn. A turn consititutes
+The game is a grid based and turn based roguelike, with all enemies on screen acting only after the player takes their turn. A turn consititutes
 a single movement (or null movement, also known as waiting a turn) of the player.
 
 During the game, the player will move between rooms via doors, denoted with a '/' character. Many unexplored rooms will 
