@@ -57,15 +57,19 @@ impl Tile {
     /// If the tile is locked and the corresponding key has been collected, unlocks the door.
     pub fn unlock(&mut self) {
         if self.unlockable() {
+            let lck_val = self.locked.unwrap() as usize;
             self.locked = None;
             self.blocking = false;
             self.ch = Some(DOOR_CHAR.with(DOOR_CLR));
+            unsafe { crate::entity::KEYS_COLLECTED[lck_val] -= 1 }
         }
     }
 
     /// Returns true if the corresponding key to the door has been collected.
     pub fn unlockable(&self) -> bool {
-        if let Some(k) = self.locked && unsafe { crate::entity::KEYS_COLLECTED.contains(&k) } {
+        if let Some(k) = self.locked
+            && unsafe { crate::entity::KEYS_COLLECTED[k as usize] > 0 }
+        {
             true
         } else {
             false

@@ -262,6 +262,18 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 ch: 'w'.stylize(),
                 atks: wizardry_plus.clone(),
             },
+            EntityTemplate {
+                max_hp: 2,
+                actions: vec![
+                    ActionType::TryMove(Point::new(1, 0)),
+                    ActionType::TryMove(Point::new(0, -1)),
+                    ActionType::TryMove(Point::new(-1, 0)),
+                    ActionType::TryMove(Point::new(0, 1)),
+                ],
+                movement: manhattan.clone(),
+                ch: 'o'.stylize(),
+                atks: default_atks.clone(),
+            },
         ],
         // Elites start here.
         vec![EntityTemplate {

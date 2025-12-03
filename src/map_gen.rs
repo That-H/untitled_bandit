@@ -58,7 +58,7 @@ pub fn gen_rect_in<R: Rng>(
     rng: &mut R,
     min_size: i32,
     max_size: i32,
-    illegal_hosts: &[usize]
+    illegal_hosts: &[usize],
 ) {
     // Return the id of the first rect found to overlap with the given one that is not exempt.
     let overlaps = |r: &Rect, rects: &[Rect], exempt: &[usize]| -> Option<usize> {
@@ -203,7 +203,7 @@ pub fn map_gen<R: Rng>(
     let mut occupied: HashMap<Point, Cell> = HashMap::new();
 
     for _r in 0..rect_count {
-        gen_rect_in(&mut rects, &mut occupied, rng,  min_size, max_size, &[]);
+        gen_rect_in(&mut rects, &mut occupied, rng, min_size, max_size, &[]);
     }
 
     (occupied, rects)

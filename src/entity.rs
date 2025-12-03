@@ -23,7 +23,7 @@ pub static mut FLOORS_CLEARED: u32 = 0;
 /// True when the floor should be regenerated.
 pub static mut NEXT_FLOOR: bool = false;
 /// List of all keys the player has collected.
-pub static mut KEYS_COLLECTED: Vec<u32> = Vec::new();
+pub static mut KEYS_COLLECTED: [u32; KEY_CLRS_COUNT] = [0; KEY_CLRS_COUNT];
 
 pub const KEY_CLRS: [style::Color; 4] = [
     style::Color::DarkRed,
@@ -31,6 +31,7 @@ pub const KEY_CLRS: [style::Color; 4] = [
     style::Color::Blue,
     style::Color::Yellow,
 ];
+const KEY_CLRS_COUNT: usize = KEY_CLRS.len();
 const WALL_SENTRY_CHAR: char = '█';
 const WALL_SENTRY_CLR: style::Color = style::Color::Yellow;
 
@@ -339,10 +340,10 @@ impl bn::Entity for En {
                     ActionType::TryMove(disp) => {
                         let cur_nx = pos + disp;
                         let (unlockable, possible) = match cmd.get_map(cur_nx) {
-                            Some(t) => { 
+                            Some(t) => {
                                 let u = t.unlockable();
                                 (u, !t.blocking || u)
-                            },
+                            }
                             None => (false, false),
                         };
 
@@ -378,7 +379,10 @@ impl bn::Entity for En {
                                 // Unlock the door.
                                 if unlockable {
                                     nx = None;
-                                    cmd.queue(bn::Cmd::new_on(cur_nx).modify_tile(Box::new(|t: &mut Tile| t.unlock())));
+                                    cmd.queue(
+                                        bn::Cmd::new_on(cur_nx)
+                                            .modify_tile(Box::new(|t: &mut Tile| t.unlock())),
+                                    );
                                 }
                             }
                         }

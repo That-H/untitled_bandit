@@ -12,7 +12,7 @@ use rand::{Rng, SeedableRng};
 use std::{collections::HashMap, io, thread};
 use untitled_bandit::*;
 
-const ROOMS: u32 = 16;
+const ROOMS: u32 = 10;
 const SPECIAL_ROOMS: u32 = 1;
 const MAX_WIDTH: i32 = 13;
 const MIN_WIDTH: i32 = 6;
@@ -38,7 +38,7 @@ const ATKS_POS: Point = Point::new(28, 13);
 const ATKS_WID: usize = 9;
 const KEYS: usize = 3;
 const KEYS_POS: Point = Point::new(83, 4);
-const KEYS_WID: usize = KEY_CLRS.len() * 2 + 1;
+const KEYS_WID: usize = KEY_CLRS.len() * 4 + 1;
 
 // Contains the entity templates.
 mod templates;
@@ -98,7 +98,7 @@ fn get_key(revealed: bool, key_id: u32) -> Tile {
         door: None,
         slippery: false,
         step_effect: Some(Box::new(move |pos, _| {
-            unsafe { KEYS_COLLECTED.push(key_id) }
+            unsafe { KEYS_COLLECTED[key_id as usize] += 1 }
             vec![bn::Cmd::new_on(pos).modify_tile(Box::new(|t: &mut Tile| {
                 t.step_effect = None;
                 t.ch = Some('.'.stylize());
@@ -124,39 +124,35 @@ fn main() {
 
     // Sort the costs and templates using those costs so that the templates do not have to be returned in sorted order.
     // e, h, l, k, b, w
-    let mut costs = [12, 20, 45, 37, 34, 40];
-    let mut cost_iter = costs.iter();
-    templates.sort_by_cached_key(|_| cost_iter.next().unwrap());
-    costs.sort();
-
-    let elite_costs = [50];
+    let costs = HashMap::from([
+        ('e', 12),
+        ('h', 20),
+        ('l', 45),
+        ('k', 37),
+        ('b', 34),
+        ('w', 40),
+        ('o', 15),
+        ('B', 50),
+    ]);
+    templates.sort_by_key(|temp| costs[temp.ch.content()]);
 
     let get_temp = |budget: u32,
                     rng: &mut rand::rngs::StdRng,
                     elite: bool|
      -> Option<(&EntityTemplate, u32)> {
-        let idx = if elite {
-            rng.random_range(0..elites.len())
-        } else {
-            let max_idx = match costs.binary_search(&budget) {
-                Ok(idx) => idx,
-                Err(idx) => {
-                    if idx == 0 {
-                        return None;
-                    } else {
-                        idx - 1
-                    }
+        let temps = if elite { &elites } else { &templates };
+        let possible: Vec<_> = temps
+            .iter()
+            .filter_map(|t| {
+                let cost = costs[t.ch.content()];
+                if cost <= budget {
+                    Some((t, cost))
+                } else {
+                    None
                 }
-            };
-            rng.random_range(0..=max_idx)
-        };
-        let templates = if elite { &elites } else { &templates };
-        let cost = if elite { elite_costs[idx] } else { costs[idx] };
-        if cost <= budget {
-            Some((&templates[idx], cost))
-        } else {
-            None
-        }
+            })
+            .collect();
+        possible.choose(rng).cloned()
     };
 
     let gen_floor = |map: &mut bandit::Map<En>, rng: &mut rand::rngs::StdRng, floor_num: u32| {
@@ -174,8 +170,9 @@ fn main() {
         map.insert_entity(pl, unsafe { PLAYER });
 
         // Generate the rooms of the map.
-        let (mut grid, mut rooms) = map_gen::map_gen(ROOMS - SPECIAL_ROOMS, MAX_WIDTH, MIN_WIDTH, rng);
-        
+        let (mut grid, mut rooms) =
+            map_gen::map_gen(ROOMS - SPECIAL_ROOMS, MAX_WIDTH, MIN_WIDTH, rng);
+
         // Whether we have chosen an exit room yet.
         let mut done_exit = false;
         // Location of the door to the exit room.
@@ -225,8 +222,21 @@ fn main() {
         }
 
         // Generate a new room specifically for the key.
-        map_gen::gen_rect_in(&mut rooms, &mut grid, rng, MIN_WIDTH, MAX_WIDTH, &[0, exit_id]);
-        let key_pos = *rooms.last().unwrap().inner_cells().collect::<Vec<Point>>().choose(rng).unwrap();
+        map_gen::gen_rect_in(
+            &mut rooms,
+            &mut grid,
+            rng,
+            MIN_WIDTH,
+            MAX_WIDTH,
+            &[0, exit_id],
+        );
+        let key_pos = *rooms
+            .last()
+            .unwrap()
+            .inner_cells()
+            .collect::<Vec<Point>>()
+            .choose(rng)
+            .unwrap();
 
         // Put the cells actually into the map.
         for y in -(((MAP_HEIGHT / 2) + MAP_OFFSET) as i32)..(MAP_HEIGHT / 2 + MAP_OFFSET) as i32 {
@@ -236,7 +246,9 @@ fn main() {
                 let mut door = None;
 
                 // If there is already a tile there, don't overwrite it.
-                if map.get_map(pos).is_some() { continue };
+                if map.get_map(pos).is_some() {
+                    continue;
+                };
 
                 let ch = match grid.get(&pos) {
                     Some(cl) => match cl {
@@ -425,8 +437,18 @@ fn main() {
             let mut next_line = Vec::new();
             for (n, clr) in KEY_CLRS.iter().enumerate() {
                 next_line.push(' '.stylize());
-                next_line.push(KEY.with(if unsafe { KEYS_COLLECTED.contains(&(n as u32)) } { *clr } else { style::Color::DarkGrey }));
+                let keys = unsafe { KEYS_COLLECTED[n] };
+                next_line.push(char::from_digit(keys, 16).unwrap().stylize());
+                next_line.push('x'.stylize());
+                next_line.push(
+                    KEY.with(if keys > 0 {
+                        *clr
+                    } else {
+                        style::Color::DarkGrey
+                    }),
+                );
             }
+
             next_line.push(' '.stylize());
             cur_win.data.push(next_line);
             cur_win.data.push(vec![' '.stylize(); KEYS_WID]);
