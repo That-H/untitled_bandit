@@ -34,11 +34,15 @@ const STATS: usize = 1;
 const STATS_POS: Point = Point::new(22, 4);
 const STATS_WID: usize = 15;
 const ATKS: usize = 2;
-const ATKS_POS: Point = Point::new(28, 13);
+const ATKS_POS: Point = Point::new(28, 12);
 const ATKS_WID: usize = 9;
 const KEYS: usize = 3;
 const KEYS_POS: Point = Point::new(83, 4);
 const KEYS_WID: usize = KEY_CLRS.len() * 4 + 1;
+const LOG: usize = 4;
+const LOG_POS: Point = Point::new(83, 10);
+const LOG_WID: usize = 20;
+const LOG_HGT: usize = 8;
 
 // Contains the entity templates.
 mod templates;
@@ -132,6 +136,7 @@ fn main() {
         ('b', 34),
         ('w', 40),
         ('o', 15),
+        ('v', 45),
         ('B', 50),
     ]);
     templates.sort_by_key(|temp| costs[temp.ch.content()]);
@@ -314,6 +319,7 @@ fn main() {
     win_cont.add_win(windowed::Window::new(STATS_POS));
     win_cont.add_win(windowed::Window::new(ATKS_POS));
     win_cont.add_win(windowed::Window::new(KEYS_POS));
+    win_cont.add_win(windowed::Window::new(LOG_POS));
 
     let delay = std::time::Duration::from_millis(DELAY);
     let vfx_delay = std::time::Duration::from_millis(VFX_DELAY);
@@ -454,6 +460,31 @@ fn main() {
             cur_win.data.push(vec![' '.stylize(); KEYS_WID]);
 
             cur_win.outline_with('#'.grey());
+
+            // Tell the player the last few things that have occurred.
+            cur_win = &mut win_cont.windows[LOG];
+            cur_win.data.clear();
+            cur_win.data.push(vec![' '.stylize(); LOG_WID]);
+            add_line(style::Color::White, "LOG: ", cur_win, LOG_WID);
+            let read = LOG_MSGS.read().unwrap();
+            let len = read.len();
+            let start = if len < LOG_HGT {
+                0
+            } else {
+                len - LOG_HGT
+            };
+
+            for string in LOG_MSGS.read().unwrap()[start..len].iter() {
+                add_line(style::Color::White, string, cur_win, LOG_WID);
+            }
+
+            for _ in cur_win.data.len()..=LOG_HGT {
+                cur_win.data.push(vec![' '.stylize(); LOG_WID]);
+            }
+
+            cur_win.data.push(vec![' '.stylize(); LOG_WID]);
+            cur_win.outline_with('#'.grey());
+
             win_cont.refresh();
 
             // Print the screen.

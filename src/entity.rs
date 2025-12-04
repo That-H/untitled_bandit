@@ -6,6 +6,7 @@ use crate::bn;
 use attacks::*;
 use bn::Entity;
 use std::cell::RefCell;
+use std::sync::RwLock;
 use std::rc::Rc;
 
 /// Type of action the player will perform.
@@ -24,6 +25,8 @@ pub static mut FLOORS_CLEARED: u32 = 0;
 pub static mut NEXT_FLOOR: bool = false;
 /// List of all keys the player has collected.
 pub static mut KEYS_COLLECTED: [u32; KEY_CLRS_COUNT] = [0; KEY_CLRS_COUNT];
+/// Contains messages about what has occurred.
+pub static LOG_MSGS: RwLock<Vec<String>> = RwLock::new(Vec::new());
 
 pub const KEY_CLRS: [style::Color; 4] = [
     style::Color::DarkRed,
@@ -191,6 +194,9 @@ impl bn::Entity for En {
             if self.is_player {
                 unsafe { DEAD = true }
             } else {
+
+                let mut handle = LOG_MSGS.write().unwrap();
+                handle.push(format!("{} is dead", *self.ch.content()));
                 unsafe { ENEMIES_REMAINING -= 1 }
                 cmd.queue(bn::Cmd::new_here().delete_entity());
             }
@@ -296,11 +302,16 @@ impl bn::Entity for En {
                             }
 
                             if hit {
+                                let ch = *self.ch.content();
                                 if cmd.get_ent(target).is_some() {
                                     // Apply damage.
                                     cmd.queue(bn::Cmd::new_on(target).modify_entity(Box::new(
                                         move |e: &mut En| {
                                             e.apply_dmg(dmg_inst);
+                                            let mut handle = LOG_MSGS.write().unwrap();
+                                            let e_ch = *e.ch.content();
+                                            handle.push(format!("{} attacked {}", ch, e_ch));
+                                            handle.push(format!("hp of {} is {}/{}", e_ch, *e.hp, e.hp.max));
                                         },
                                     )));
                                 }

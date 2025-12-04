@@ -93,7 +93,7 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
     // Manhattan movement.
     let manhattan = Point::ORIGIN.get_all_adjacent();
 
-    // Diagonal movement.
+    // Diagonal movement 1 tile.
     let mut diag = manhattan.clone();
     for p in diag.iter_mut() {
         *p = Point::new(p.x + p.y, p.y - p.x);
@@ -107,7 +107,13 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
     }
 
     // Manhattan movement with diagonal.
-    let _total = Point::ORIGIN.get_all_adjacent_diagonal();
+    let total = Point::ORIGIN.get_all_adjacent_diagonal();
+
+    // All moves with a manhattan distance of 2.
+    let mut viking_move = total.clone();
+    for p in manhattan.iter() {
+        viking_move.push(*p * 2);
+    }
 
     // Default attack pattern.
     let default_atks = get_default_atks(1, FOUR_POS_ATK, style::Color::Red);
@@ -145,6 +151,12 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 *p = *p * 2;
             }
         }
+    }
+
+    // Viking movement as an attack pattern.
+    let mut viking_atk = diagonal_atks.clone();
+    for (dir, atks) in spear.melee_atks.iter() {
+        viking_atk.melee_atks.get_mut(dir).unwrap().push(atks[0].clone());
     }
 
     // Pull the target towards self, without damaging them.
@@ -273,6 +285,20 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 movement: manhattan.clone(),
                 ch: 'o'.stylize(),
                 atks: default_atks.clone(),
+            },
+            EntityTemplate {
+                max_hp: 2,
+                actions: vec![
+                    ActionType::Wait,
+                    ActionType::Wait,
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                ],
+                movement: viking_move.clone(),
+                ch: 'v'.stylize(),
+                atks: viking_atk.clone(),
             },
         ],
         // Elites start here.

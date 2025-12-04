@@ -55,4 +55,12 @@ impl DmgInst {
             acc,
         }
     }
+
+    /// Returns the amount of damage this instance deals.
+    pub fn total_dmg(&self) -> i32 {
+        match self.dmg {
+            DmgType::Heal(h) => -(h as i32),
+            DmgType::Dmg(d) => d as i32,
+        }
+    }
 }
