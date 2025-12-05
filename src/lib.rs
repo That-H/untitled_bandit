@@ -22,6 +22,8 @@ pub mod map_gen;
 
 pub mod entity;
 
+pub mod templates;
+
 /// A single tile in a map.
 pub struct Tile {
     /// Whether there is anything there or not.
@@ -62,6 +64,7 @@ impl Tile {
             self.blocking = false;
             self.ch = Some(DOOR_CHAR.with(DOOR_CLR));
             unsafe { crate::entity::KEYS_COLLECTED[lck_val] -= 1 }
+            entity::LOG_MSGS.write().unwrap().push(format!("{} unlocks door", templates::PLAYER_CHARACTER).into());
         }
     }
 

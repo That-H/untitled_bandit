@@ -8,6 +8,7 @@ use bn::Entity;
 use std::cell::RefCell;
 use std::sync::RwLock;
 use std::rc::Rc;
+use std::fmt;
 
 /// Type of action the player will perform.
 pub static mut ACTION: ActionType = ActionType::Wait;
@@ -26,7 +27,7 @@ pub static mut NEXT_FLOOR: bool = false;
 /// List of all keys the player has collected.
 pub static mut KEYS_COLLECTED: [u32; KEY_CLRS_COUNT] = [0; KEY_CLRS_COUNT];
 /// Contains messages about what has occurred.
-pub static LOG_MSGS: RwLock<Vec<String>> = RwLock::new(Vec::new());
+pub static LOG_MSGS: RwLock<Vec<LogMsg>> = RwLock::new(Vec::new());
 
 pub const KEY_CLRS: [style::Color; 4] = [
     style::Color::DarkRed,
@@ -37,6 +38,35 @@ pub const KEY_CLRS: [style::Color; 4] = [
 const KEY_CLRS_COUNT: usize = KEY_CLRS.len();
 const WALL_SENTRY_CHAR: char = '█';
 const WALL_SENTRY_CLR: style::Color = style::Color::Yellow;
+
+/// Displays a log message.
+#[derive(Clone)]
+pub struct LogMsg {
+    txt: String,
+    t_stamp: u32,
+}
+
+impl LogMsg {
+    /// Create a new message using GLOBAL_TIME and the given text.
+    pub fn new(txt: String) -> Self {
+        Self {
+            txt,
+            t_stamp: unsafe { GLOBAL_TIME },
+        }
+    }
+}
+
+impl fmt::Display for LogMsg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "T+{}: {}", self.t_stamp, self.txt)
+    }
+}
+
+impl From<String> for LogMsg {
+    fn from(val: String) -> Self {
+        Self::new(val)
+    }
+}
 
 /// Describes the way in which an entity differs from a normal entity.
 #[derive(Clone, Copy)]
@@ -196,7 +226,7 @@ impl bn::Entity for En {
             } else {
 
                 let mut handle = LOG_MSGS.write().unwrap();
-                handle.push(format!("{} is dead", *self.ch.content()));
+                handle.push(format!("{} is dead", *self.ch.content()).into());
                 unsafe { ENEMIES_REMAINING -= 1 }
                 cmd.queue(bn::Cmd::new_here().delete_entity());
             }
@@ -307,11 +337,12 @@ impl bn::Entity for En {
                                     // Apply damage.
                                     cmd.queue(bn::Cmd::new_on(target).modify_entity(Box::new(
                                         move |e: &mut En| {
+                                            let old = *e.hp;
                                             e.apply_dmg(dmg_inst);
                                             let mut handle = LOG_MSGS.write().unwrap();
                                             let e_ch = *e.ch.content();
-                                            handle.push(format!("{} attacked {}", ch, e_ch));
-                                            handle.push(format!("hp of {} is {}/{}", e_ch, *e.hp, e.hp.max));
+                                            handle.push(format!("{} {} -> {}", ch, dmg_inst.total_dmg(), e_ch).into());
+                                            handle.push(format!("{} hp: {}/{}->{}/{}", e_ch, old, e.hp.max, *e.hp, e.hp.max).into());
                                         },
                                     )));
                                 }

@@ -41,13 +41,8 @@ const KEYS_POS: Point = Point::new(83, 4);
 const KEYS_WID: usize = KEY_CLRS.len() * 4 + 1;
 const LOG: usize = 4;
 const LOG_POS: Point = Point::new(83, 10);
-const LOG_WID: usize = 20;
-const LOG_HGT: usize = 8;
-
-// Contains the entity templates.
-mod templates;
-
-// use templates::{PLAYER_CHARACTER, PLAYER_COLOUR};
+const LOG_WID: usize = 25;
+const LOG_HGT: usize = 11;
 
 type StepEffect = dyn Fn(Point, &bn::Map<En>) -> Vec<bn::Cmd<En>>;
 
@@ -84,7 +79,8 @@ fn get_exit(revealed: bool, floor_num: usize) -> Tile {
         step_effect: Some(Box::new(|_, _| {
             unsafe {
                 if ENEMIES_REMAINING == 0 {
-                    NEXT_FLOOR = true
+                    NEXT_FLOOR = true;
+                    LOG_MSGS.write().unwrap().clear();
                 }
             }
             Vec::new()
@@ -103,6 +99,7 @@ fn get_key(revealed: bool, key_id: u32) -> Tile {
         slippery: false,
         step_effect: Some(Box::new(move |pos, _| {
             unsafe { KEYS_COLLECTED[key_id as usize] += 1 }
+            LOG_MSGS.write().unwrap().push(format!("{} gains key", templates::PLAYER_CHARACTER).into());
             vec![bn::Cmd::new_on(pos).modify_tile(Box::new(|t: &mut Tile| {
                 t.step_effect = None;
                 t.ch = Some('.'.stylize());
@@ -474,11 +471,11 @@ fn main() {
                 len - LOG_HGT
             };
 
-            for string in LOG_MSGS.read().unwrap()[start..len].iter() {
-                add_line(style::Color::White, string, cur_win, LOG_WID);
+            for msg in LOG_MSGS.read().unwrap()[start..len].iter() {
+                add_line(style::Color::White, &msg.to_string(), cur_win, LOG_WID);
             }
 
-            for _ in cur_win.data.len()..=LOG_HGT {
+            for _ in cur_win.data.len()..=LOG_HGT + 1 {
                 cur_win.data.push(vec![' '.stylize(); LOG_WID]);
             }
 
@@ -491,7 +488,9 @@ fn main() {
             let screen =
                 win_cont.to_string_with_default(TERMINAL_WID, TERMINAL_HGT - 1, ' '.stylize());
 
-            queue!(handle, cursor::MoveTo(0, 0), style::Print(screen));
+            for (y, line) in screen.lines().enumerate() {
+                queue!(handle, cursor::MoveTo(0, y as u16), style::Print(line));
+            }
 
             handle.flush();
         };

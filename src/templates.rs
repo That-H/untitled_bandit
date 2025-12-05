@@ -1,4 +1,6 @@
 use crate::*;
+use attacks::*;
+use entity::*;
 
 pub const PLAYER_CHARACTER: char = '@';
 pub const PLAYER_COLOUR: style::Color = style::Color::Green;
