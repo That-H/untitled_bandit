@@ -31,7 +31,7 @@ health by 1.
 
 Enemies will try to do the same to the player, often moving towards them if the player is too far away to directly attack.
 An enemy may attack on its next turn if it is highlighted red, and not all enemies have the same attack pattern (tiles 
-relative to themself that they could perform an attack against on their turn). Some enemies may not attack every turn.
+        relative to themself that they could perform an attack against on their turn). Some enemies may not attack every turn.
 
 ## Interface
 
@@ -42,21 +42,23 @@ Various windows will be displayed on this terminal window during gameplay, which
 - In the top left are basic statistics, including current health, position, floor number, and turns completed.
 - Below the previous window is a window displaying the extent of the player's current attacks.
 - In the top right corner, current held keys are displayed.
+- On the right of the main window, a log of attacks and major events is displayed, with timestamps.
 
 ### Controls
 
 Movement can be achieved using any of the following key sets (choose whichever you are most comfortable
-with):
+        with):
 
-- wasd
-- arrow keys
-- hjkl 
+    - wasd
+    - arrow keys
+    - hjkl 
 
 The player may also choose to do nothing for a turn, which is performed by pressing the period ('.').
 
-## Running the game
+## Running The Game
 
 The github repository contains, in the target/release/ folder, an optimised executable file that runs the game.
+Alternatively, you can build the game from the source code and run the resulting binary. See [Building From Source](#Building-From-Source)
 
 ## Dependencies
 
@@ -72,6 +74,18 @@ objects.
 - [rect](https://github.com/That-H/rect): Basic rectangle handling involved in procedural map generation.
 - [windowed](https://github.com/That-H/windowed): Terminal windowing library used to display the main game window
 as well as various stats windows simultaneously.
- 
+
 [bandit]: https://github.com/That-H/bandit
 [crossterm]: https://crates.io/crates/crossterm
+
+### Building From Source
+
+Doing the following will reqiure both [git](https://git-scm.com/) and Cargo (the Rust build system) to be installed.
+
+	git clone https://github.com/That-H/untitled_bandit
+	cd untitled_bandit
+	cargo build --release
+	cargo run
+
+These commands will create a local copy of the repository, cd into it, and run it with optimisation. Note that the build step
+is required as there will already be an executable in the target/release folder in the local copy, which will be overwritten.
