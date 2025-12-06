@@ -102,7 +102,7 @@ fn get_key(revealed: bool, key_id: u32) -> Tile {
             LOG_MSGS.write().unwrap().push(format!("{} gains key", templates::PLAYER_CHARACTER).into());
             vec![bn::Cmd::new_on(pos).modify_tile(Box::new(|t: &mut Tile| {
                 t.step_effect = None;
-                t.ch = Some('.'.stylize());
+                t.ch = Some('.'.with(WALL_CLRS[unsafe { FLOORS_CLEARED as usize }]));
             }))]
         })),
         locked: None,
@@ -124,17 +124,31 @@ fn main() {
     let (mut templates, elites) = templates::get_templates();
 
     // Sort the costs and templates using those costs so that the templates do not have to be returned in sorted order.
-    // e, h, l, k, b, w
     let costs = HashMap::from([
         ('e', 12),
-        ('h', 20),
+        ('h', 22),
         ('l', 45),
         ('k', 37),
-        ('b', 34),
-        ('w', 40),
+        ('b', 44),
+        ('w', 31),
         ('o', 15),
         ('v', 45),
         ('B', 50),
+        ('E', 50),
+    ]);
+
+    // Min and max floors for each enemy type.
+    let floor_rangs = HashMap::from([
+        ('e', 0..=1),
+        ('h', 0..=1),
+        ('l', 2..=3),
+        ('k', 1..=2),
+        ('b', 3..=3),
+        ('w', 1..=2),
+        ('o', 0..=1),
+        ('v', 3..=3),
+        ('B', 1..=1),
+        ('E', 0..=0),
     ]);
     templates.sort_by_key(|temp| costs[temp.ch.content()]);
 
@@ -146,8 +160,10 @@ fn main() {
         let possible: Vec<_> = temps
             .iter()
             .filter_map(|t| {
-                let cost = costs[t.ch.content()];
-                if cost <= budget {
+                let ch = t.ch.content();
+                let cost = costs[ch];
+                let flrs = &floor_rangs[ch];
+                if cost <= budget && flrs.contains(&unsafe { FLOORS_CLEARED }) {
                     Some((t, cost))
                 } else {
                     None
@@ -184,7 +200,7 @@ fn main() {
 
         // Generate enemies.
         for (n, r) in rooms.iter().enumerate().skip(1) {
-            let mut budget = (r.wid * r.hgt) as u32 / 2;
+            let mut budget = (r.wid * r.hgt) as u32 / 3 * unsafe { FLOORS_CLEARED + 1 };
             let mut cells: Vec<Point> = r.inner_cells().collect();
             cells.shuffle(rng);
             let mut elite = false;
@@ -265,7 +281,7 @@ fn main() {
                         map_gen::Cell::Door(id1, id2) => {
                             blocking = false;
                             door = Some((rooms[*id1], rooms[*id2]));
-                            Some('/'.yellow())
+                            Some(DOOR_CHAR.with(get_door_clr()))
                         }
                     },
                     None => None,

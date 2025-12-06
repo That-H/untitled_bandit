@@ -163,13 +163,16 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
 
     // Pull the target towards self, without damaging them.
     let mut wizardry = AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
-        vec![Effect::Other(|from, to, _map| {
+        vec![Effect::Other(|from, to, map| {
             let disp = (from - to) / 2;
             let new = to + disp;
 
             unsafe {
                 if PLAYER == to {
                     PLAYER = new;
+                }
+                if map.get_ent(new).is_some() {
+                    ENEMIES_REMAINING -= 1
                 }
             }
             vec![bn::Cmd::new_on(to).move_to(new)]
@@ -303,21 +306,48 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 atks: viking_atk.clone(),
             },
         ],
-        // Elites start here.
-        vec![EntityTemplate {
-            max_hp: 7,
-            actions: vec![
-                ActionType::Pathfind,
-                ActionType::Pathfind,
-                ActionType::Multi(
-                    Box::new(ActionType::Pathfind),
-                    Box::new(ActionType::TryMelee),
-                ),
-                ActionType::Wait,
-            ],
-            movement: diag_plus.clone(),
-            ch: 'B'.stylize(),
-            atks: get_holiness(3, 15),
-        }],
+        // Capitals start here.
+        vec![
+            EntityTemplate {
+                max_hp: 7,
+                actions: vec![
+                    ActionType::Pathfind,
+                    ActionType::Pathfind,
+                    ActionType::Multi(
+                        Box::new(ActionType::Pathfind),
+                        Box::new(ActionType::TryMelee),
+                    ),
+                    ActionType::Wait,
+                ],
+                movement: diag_plus.clone(),
+                ch: 'B'.stylize(),
+                atks: get_holiness(3, 15),
+            },
+            EntityTemplate {
+                max_hp: 5,
+                actions: vec![
+                    ActionType::Wait,
+                    ActionType::Wait,
+                    ActionType::Wait,
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Multi(
+                            Box::new(ActionType::Pathfind),
+                            Box::new(ActionType::TryMelee),
+                        )),
+                    ),
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Multi(
+                            Box::new(ActionType::Pathfind),
+                            Box::new(ActionType::TryMelee),
+                        )),
+                    ),
+                ],
+                movement: manhattan.clone(),
+                ch: 'E'.stylize(),
+                atks: default_atks.clone(),
+            },
+        ],
     )
 }

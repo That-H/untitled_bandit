@@ -363,7 +363,7 @@ checksum = "f6ccf251212114b54433ec949fd6a7841275f9ada20dddd2f29e9ceea4501493"
 
 [[package]]
 name = "untitled_bandit"
-version = "0.6.0"
+version = "0.6.1-beta"
 dependencies = [
  "bandit",
  "cellular_automata",

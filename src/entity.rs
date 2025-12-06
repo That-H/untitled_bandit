@@ -25,19 +25,18 @@ pub static mut FLOORS_CLEARED: u32 = 0;
 /// True when the floor should be regenerated.
 pub static mut NEXT_FLOOR: bool = false;
 /// List of all keys the player has collected.
-pub static mut KEYS_COLLECTED: [u32; KEY_CLRS_COUNT] = [0; KEY_CLRS_COUNT];
+pub static mut KEYS_COLLECTED: [u32; KEY_CLRS_COUNT] = [1; KEY_CLRS_COUNT];
 /// Contains messages about what has occurred.
 pub static LOG_MSGS: RwLock<Vec<LogMsg>> = RwLock::new(Vec::new());
 
 pub const KEY_CLRS: [style::Color; 4] = [
     style::Color::DarkRed,
     style::Color::Green,
-    style::Color::Blue,
     style::Color::Yellow,
+    style::Color::Blue,
 ];
 const KEY_CLRS_COUNT: usize = KEY_CLRS.len();
 const WALL_SENTRY_CHAR: char = '█';
-const WALL_SENTRY_CLR: style::Color = style::Color::Yellow;
 
 /// Displays a log message.
 #[derive(Clone)]
@@ -577,7 +576,7 @@ impl bn::Entity for En {
                                         92,
                                         false,
                                         vec![ActionType::Wait],
-                                        WALL_SENTRY_CHAR.with(WALL_SENTRY_CLR),
+                                        WALL_SENTRY_CHAR.with(get_door_clr()),
                                         Special::WallSentry,
                                         Vec::new(),
                                         AtkPat::empty(),

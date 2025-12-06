@@ -31,7 +31,7 @@ health by 1.
 
 Enemies will try to do the same to the player, often moving towards them if the player is too far away to directly attack.
 An enemy may attack on its next turn if it is highlighted red, and not all enemies have the same attack pattern (tiles 
-        relative to themself that they could perform an attack against on their turn). Some enemies may not attack every turn.
+relative to themself that they could perform an attack against on their turn). Some enemies may not attack every turn.
 
 ## Interface
 
@@ -46,8 +46,7 @@ Various windows will be displayed on this terminal window during gameplay, which
 
 ### Controls
 
-Movement can be achieved using any of the following key sets (choose whichever you are most comfortable
-        with):
+Movement can be achieved using any of the following key sets (choose whichever you are most comfortable with):
 
     - wasd
     - arrow keys
