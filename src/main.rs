@@ -99,7 +99,10 @@ fn get_key(revealed: bool, key_id: u32) -> Tile {
         slippery: false,
         step_effect: Some(Box::new(move |pos, _| {
             unsafe { KEYS_COLLECTED[key_id as usize] += 1 }
-            LOG_MSGS.write().unwrap().push(format!("{} gains key", templates::PLAYER_CHARACTER).into());
+            LOG_MSGS
+                .write()
+                .unwrap()
+                .push(format!("{} gains key", templates::PLAYER_CHARACTER).into());
             vec![bn::Cmd::new_on(pos).modify_tile(Box::new(|t: &mut Tile| {
                 t.step_effect = None;
                 t.ch = Some('.'.with(WALL_CLRS[unsafe { FLOORS_CLEARED as usize }]));
@@ -107,6 +110,16 @@ fn get_key(revealed: bool, key_id: u32) -> Tile {
         })),
         locked: None,
     }
+}
+
+// Metadata about templates.
+struct TempMeta {
+    // Cost to spawn the enemy in a room.
+    cost: u32,
+    // Range of floors it can spawn in.
+    floor_rang: std::ops::RangeInclusive<u32>,
+    // Maximum amount of this entity that can spawn in a room.
+    max: u32,
 }
 
 fn main() {
@@ -121,49 +134,131 @@ fn main() {
     terminal::enable_raw_mode();
     execute!(io::stdout(), terminal::Clear(terminal::ClearType::All));
 
-    let (mut templates, elites) = templates::get_templates();
+    let (templates, elites) = templates::get_templates();
 
-    // Sort the costs and templates using those costs so that the templates do not have to be returned in sorted order.
-    let costs = HashMap::from([
-        ('e', 12),
-        ('h', 22),
-        ('l', 45),
-        ('k', 37),
-        ('b', 44),
-        ('w', 31),
-        ('o', 15),
-        ('v', 45),
-        ('B', 50),
-        ('E', 50),
+    // Contains additional metadata about each enemy type.
+    let meta = HashMap::from([
+        (
+            'e',
+            TempMeta {
+                cost: 12,
+                floor_rang: 0..=1,
+                max: 3,
+            },
+        ),
+        (
+            'h',
+            TempMeta {
+                cost: 22,
+                floor_rang: 0..=1,
+                max: 2,
+            },
+        ),
+        (
+            'l',
+            TempMeta {
+                cost: 60,
+                floor_rang: 3..=3,
+                max: 1,
+            },
+        ),
+        (
+            'k',
+            TempMeta {
+                cost: 37,
+                floor_rang: 1..=2,
+                max: 2,
+            },
+        ),
+        (
+            'b',
+            TempMeta {
+                cost: 48,
+                floor_rang: 3..=3,
+                max: 1,
+            },
+        ),
+        (
+            'w',
+            TempMeta {
+                cost: 31,
+                floor_rang: 1..=2,
+                max: 2,
+            },
+        ),
+        (
+            'o',
+            TempMeta {
+                cost: 15,
+                floor_rang: 0..=1,
+                max: 3,
+            },
+        ),
+        (
+            'v',
+            TempMeta {
+                cost: 45,
+                floor_rang: 3..=3,
+                max: 2,
+            },
+        ),
+        (
+            'g',
+            TempMeta {
+                cost: 35,
+                floor_rang: 2..=2,
+                max: 2,
+            },
+        ),
+        (
+            'O',
+            TempMeta {
+                cost: 50,
+                floor_rang: 1..=1,
+                max: 1,
+            }
+        ),
+        (
+            'B',
+            TempMeta {
+                cost: 50,
+                floor_rang: 2..=2,
+                max: 1,
+            },
+        ),
+        (
+            'E',
+            TempMeta {
+                cost: 50,
+                floor_rang: 0..=0,
+                max: 1,
+            },
+        ),
     ]);
-
-    // Min and max floors for each enemy type.
-    let floor_rangs = HashMap::from([
-        ('e', 0..=1),
-        ('h', 0..=1),
-        ('l', 2..=3),
-        ('k', 1..=2),
-        ('b', 3..=3),
-        ('w', 1..=2),
-        ('o', 0..=1),
-        ('v', 3..=3),
-        ('B', 1..=1),
-        ('E', 0..=0),
-    ]);
-    templates.sort_by_key(|temp| costs[temp.ch.content()]);
 
     let get_temp = |budget: u32,
                     rng: &mut rand::rngs::StdRng,
-                    elite: bool|
+                    elite: bool,
+                    temp_counts: &HashMap<char, u32>|
      -> Option<(&EntityTemplate, u32)> {
         let temps = if elite { &elites } else { &templates };
         let possible: Vec<_> = temps
             .iter()
             .filter_map(|t| {
                 let ch = t.ch.content();
-                let cost = costs[ch];
-                let flrs = &floor_rangs[ch];
-                if cost <= budget && flrs.contains(&unsafe { FLOORS_CLEARED }) {
+                let TempMeta {
+                    cost,
+                    floor_rang: flrs,
+                    max,
+                } = &meta[ch];
+                let cost = *cost;
+                if cost <= budget
+                    && flrs.contains(&unsafe { FLOORS_CLEARED })
+                    && match temp_counts.get(ch) {
+                        Some(c) => c < max,
+                        None => true,
+                    }
+                {
                     Some((t, cost))
                 } else {
                     None
@@ -177,6 +272,9 @@ fn main() {
         // Create the player if it is the first floor, otherwise get them.
         let pl = if floor_num == 0 {
             templates::get_player()
+        } else if floor_num == KILL_SCREEN as u32 {
+            println!("You win!");
+            std::process::exit(0);
         } else {
             map.get_ent(unsafe { PLAYER }).unwrap().clone()
         };
@@ -189,7 +287,7 @@ fn main() {
 
         // Generate the rooms of the map.
         let (mut grid, mut rooms) =
-            map_gen::map_gen(ROOMS - SPECIAL_ROOMS, MAX_WIDTH, MIN_WIDTH, rng);
+            map_gen::map_gen(ROOMS - SPECIAL_ROOMS + floor_num * 3, MAX_WIDTH, MIN_WIDTH, rng);
 
         // Whether we have chosen an exit room yet.
         let mut done_exit = false;
@@ -204,6 +302,7 @@ fn main() {
             let mut cells: Vec<Point> = r.inner_cells().collect();
             cells.shuffle(rng);
             let mut elite = false;
+            let mut temp_counts = HashMap::new();
 
             // Eligible to be an exit room if there is one door to it.
             if !done_exit {
@@ -228,12 +327,13 @@ fn main() {
                 );
             }
 
-            'enemy_gen: while let Some((temp, cost)) = get_temp(budget, rng, elite) {
+            'enemy_gen: while let Some((temp, cost)) = get_temp(budget, rng, elite, &temp_counts) {
                 budget -= cost;
                 // Exit early if there is no where to place the entity.
                 let Some(nx) = cells.pop() else {
                     break 'enemy_gen;
                 };
+                *temp_counts.entry(*temp.ch.content()).or_insert(0) += 1;
 
                 map.insert_entity(En::from_template(temp, false, true), nx);
             }
@@ -459,13 +559,11 @@ fn main() {
                 let keys = unsafe { KEYS_COLLECTED[n] };
                 next_line.push(char::from_digit(keys, 16).unwrap().stylize());
                 next_line.push('x'.stylize());
-                next_line.push(
-                    KEY.with(if keys > 0 {
-                        *clr
-                    } else {
-                        style::Color::DarkGrey
-                    }),
-                );
+                next_line.push(KEY.with(if keys > 0 {
+                    *clr
+                } else {
+                    style::Color::DarkGrey
+                }));
             }
 
             next_line.push(' '.stylize());
@@ -481,11 +579,7 @@ fn main() {
             add_line(style::Color::White, "LOG: ", cur_win, LOG_WID);
             let read = LOG_MSGS.read().unwrap();
             let len = read.len();
-            let start = if len < LOG_HGT {
-                0
-            } else {
-                len - LOG_HGT
-            };
+            let start = if len < LOG_HGT { 0 } else { len - LOG_HGT };
 
             for msg in LOG_MSGS.read().unwrap()[start..len].iter() {
                 add_line(style::Color::White, &msg.to_string(), cur_win, LOG_WID);
@@ -537,6 +631,10 @@ fn main() {
                         event::KeyCode::Char('f') => ActionType::Fire(0),
                         event::KeyCode::Char('g') => ActionType::Fire(1),
                         event::KeyCode::Char('b') => ActionType::Fire(2),
+                        event::KeyCode::Char('n') => { 
+                            unsafe { NEXT_FLOOR = true }
+                            ActionType::Wait
+                        },
                         event::KeyCode::Enter => break 'main,
                         _ => continue,
                     };

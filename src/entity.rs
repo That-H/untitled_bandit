@@ -6,9 +6,9 @@ use crate::bn;
 use attacks::*;
 use bn::Entity;
 use std::cell::RefCell;
-use std::sync::RwLock;
-use std::rc::Rc;
 use std::fmt;
+use std::rc::Rc;
+use std::sync::RwLock;
 
 /// Type of action the player will perform.
 pub static mut ACTION: ActionType = ActionType::Wait;
@@ -25,7 +25,7 @@ pub static mut FLOORS_CLEARED: u32 = 0;
 /// True when the floor should be regenerated.
 pub static mut NEXT_FLOOR: bool = false;
 /// List of all keys the player has collected.
-pub static mut KEYS_COLLECTED: [u32; KEY_CLRS_COUNT] = [1; KEY_CLRS_COUNT];
+pub static mut KEYS_COLLECTED: [u32; KEY_CLRS_COUNT] = [0; KEY_CLRS_COUNT];
 /// Contains messages about what has occurred.
 pub static LOG_MSGS: RwLock<Vec<LogMsg>> = RwLock::new(Vec::new());
 
@@ -223,7 +223,6 @@ impl bn::Entity for En {
             if self.is_player {
                 unsafe { DEAD = true }
             } else {
-
                 let mut handle = LOG_MSGS.write().unwrap();
                 handle.push(format!("{} is dead", *self.ch.content()).into());
                 unsafe { ENEMIES_REMAINING -= 1 }
@@ -340,8 +339,22 @@ impl bn::Entity for En {
                                             e.apply_dmg(dmg_inst);
                                             let mut handle = LOG_MSGS.write().unwrap();
                                             let e_ch = *e.ch.content();
-                                            handle.push(format!("{} {} -> {}", ch, dmg_inst.total_dmg(), e_ch).into());
-                                            handle.push(format!("{} hp: {}/{}->{}/{}", e_ch, old, e.hp.max, *e.hp, e.hp.max).into());
+                                            handle.push(
+                                                format!(
+                                                    "{} {} -> {}",
+                                                    ch,
+                                                    dmg_inst.total_dmg(),
+                                                    e_ch
+                                                )
+                                                .into(),
+                                            );
+                                            handle.push(
+                                                format!(
+                                                    "{} hp: {}/{}->{}/{}",
+                                                    e_ch, old, e.hp.max, *e.hp, e.hp.max
+                                                )
+                                                .into(),
+                                            );
                                         },
                                     )));
                                 }

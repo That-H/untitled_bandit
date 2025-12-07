@@ -117,6 +117,29 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
         viking_move.push(*p * 2);
     }
 
+    // All moves exactly two king moves away.
+    let mut ring = Vec::new();
+    for y in -2..=2i32 {
+        for x in -2..=2i32 {
+            if y.abs() == 2 || x.abs() == 2 {
+                ring.push(Point::new(x, y));
+            }
+        }
+    }
+
+    // Attacks any square in the ring move pattern for 1 damage.
+    let mut ring_atk = AtkPat::empty();
+    let ring_atk_char = '⋇';
+    for p in ring.iter() {
+        let atk = MeleeAtk::new(
+            vec![Effect::DoDmg(DmgInst::dmg(1, 1.0))],
+            vec![*p],
+            vec![(*p, Vfx::new_opaque(ring_atk_char.red(), 7))],
+            Vfx::new_opaque('?'.stylize(), 7),
+        );
+        ring_atk.melee_atks.insert(*p, vec![atk]);
+    }
+
     // Default attack pattern.
     let default_atks = get_default_atks(1, FOUR_POS_ATK, style::Color::Red);
 
@@ -158,7 +181,11 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
     // Viking movement as an attack pattern.
     let mut viking_atk = diagonal_atks.clone();
     for (dir, atks) in spear.melee_atks.iter() {
-        viking_atk.melee_atks.get_mut(dir).unwrap().push(atks[0].clone());
+        viking_atk
+            .melee_atks
+            .get_mut(dir)
+            .unwrap()
+            .push(atks[0].clone());
     }
 
     // Pull the target towards self, without damaging them.
@@ -305,6 +332,23 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 ch: 'v'.stylize(),
                 atks: viking_atk.clone(),
             },
+            EntityTemplate {
+                max_hp: 2,
+                actions: vec![
+                    ActionType::Wait,
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                ],
+                movement: total.clone(),
+                ch: 'g'.stylize(),
+                atks: diagonal_atks.clone(),
+            },
         ],
         // Capitals start here.
         vec![
@@ -347,6 +391,23 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 movement: manhattan.clone(),
                 ch: 'E'.stylize(),
                 atks: default_atks.clone(),
+            },
+            EntityTemplate {
+                max_hp: 3,
+                actions: vec![
+                    ActionType::Wait,
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                ],
+                movement: ring.clone(),
+                ch: 'O'.stylize(),
+                atks: ring_atk.clone(),
             },
         ],
     )
