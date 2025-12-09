@@ -18,6 +18,8 @@ pub static mut PLAYER: Point = Point::new(0, 0);
 pub static mut DEAD: bool = false;
 /// Number of enemies remaining in the current room.
 pub static mut ENEMIES_REMAINING: usize = 0;
+/// Number of enemies killed over the course of the run.
+pub static mut KILLED: u32 = 0;
 /// Number of actions taken by the player.
 pub static mut GLOBAL_TIME: u32 = 0;
 /// Number of floors cleared.
@@ -225,7 +227,10 @@ impl bn::Entity for En {
             } else {
                 let mut handle = LOG_MSGS.write().unwrap();
                 handle.push(format!("{} is dead", *self.ch.content()).into());
-                unsafe { ENEMIES_REMAINING -= 1 }
+                unsafe { 
+                    ENEMIES_REMAINING -= 1;
+                    KILLED += 1;
+                }
                 cmd.queue(bn::Cmd::new_here().delete_entity());
             }
             return;

@@ -1,4 +1,10 @@
+# v0.6.3-beta
+
+## New Features
+
+
 # v0.6.2-beta
+This update mainly adds new enemies and a win condition.
 
 ## New Features
 - Added the O boss to floor 1. It attacks any tile exactly two king moves away

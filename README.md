@@ -53,6 +53,7 @@ Movement can be achieved using any of the following key sets (choose whichever y
     - hjkl 
 
 The player may also choose to do nothing for a turn, which is performed by pressing the period ('.').
+To end the current run, press the escape key.
 
 ## Running The Game
 
@@ -81,10 +82,10 @@ as well as various stats windows simultaneously.
 
 Doing the following will reqiure both [git](https://git-scm.com/) and Cargo (the Rust build system) to be installed.
 
-	`git clone https://github.com/That-H/untitled_bandit`
-	`cd untitled_bandit`
-	`cargo build --release`
-	`cargo run`
+	git clone https://github.com/That-H/untitled_bandit
+	cd untitled_bandit
+	cargo build --release
+	cargo run
 
 These commands will create a local copy of the repository, cd into it, and run it with optimisation. Note that the build step
 is required as there will already be an executable in the target/release folder in the local copy, which will be overwritten.

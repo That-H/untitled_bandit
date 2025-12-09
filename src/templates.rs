@@ -199,7 +199,8 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                     PLAYER = new;
                 }
                 if map.get_ent(new).is_some() {
-                    ENEMIES_REMAINING -= 1
+                    ENEMIES_REMAINING -= 1;
+                    KILLED += 1;
                 }
             }
             vec![bn::Cmd::new_on(to).move_to(new)]
