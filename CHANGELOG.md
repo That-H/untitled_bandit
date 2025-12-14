@@ -1,7 +1,14 @@
 # v0.6.3-beta
 
 ## New Features
+- Main menu
+- Death screen allowing the player to quit or go back to the main menu.
 
+## Balance Changes
+- The g enemy is too powerful to only appear on floor 2.
+    - Floor range 2-2 -> 2-3
+- The v is simple enough to appear on floor 2 as well.
+    - Foor range 3-3 -> 2-3
 
 # v0.6.2-beta
 This update mainly adds new enemies and a win condition.

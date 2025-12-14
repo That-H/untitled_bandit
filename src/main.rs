@@ -191,7 +191,7 @@ fn main() {
             'v',
             TempMeta {
                 cost: 45,
-                floor_rang: 3..=3,
+                floor_rang: 2..=3,
                 max: 2,
             },
         ),
@@ -199,7 +199,7 @@ fn main() {
             'g',
             TempMeta {
                 cost: 35,
-                floor_rang: 2..=2,
+                floor_rang: 2..=3,
                 max: 2,
             },
         ),
@@ -599,6 +599,7 @@ fn main() {
             LOG_MSGS.write().unwrap().clear();
             DEAD = false;
             FLOORS_CLEARED = 0;
+            NEXT_FLOOR = false;
             ENEMIES_REMAINING = 0;
             ACTION = ActionType::Wait;
             KILLED = 0;
@@ -696,10 +697,18 @@ fn main() {
                             event::KeyCode::Char('g') => ActionType::Fire(1),
                             event::KeyCode::Char('b') => ActionType::Fire(2),
                             event::KeyCode::Char('n') => {
-                                unsafe { NEXT_FLOOR = true }
+                                unsafe { 
+                                    NEXT_FLOOR = true;
+                                    if FLOORS_CLEARED + 1 == KILL_SCREEN as u32 {
+                                        break 'main;
+                                    }
+                                }
                                 ActionType::Wait
                             }
-                            event::KeyCode::Esc => break 'main,
+                            event::KeyCode::Esc => { 
+                                unsafe { DEAD = true; }
+                                break 'main;
+                            }
                             _ => continue,
                         };
 
@@ -741,12 +750,16 @@ fn main() {
                     // Check if the player has died.
                     if map.get_ent(PLAYER).unwrap().is_dead() {
                         println!("you are dead");
+                        DEAD = true;
                         break 'main;
                     }
 
                     // Check if the player has left the floor.
                     if NEXT_FLOOR {
                         FLOORS_CLEARED += 1;
+                        if FLOORS_CLEARED == KILL_SCREEN as u32 {
+                            break 'main;
+                        }
                         NEXT_FLOOR = false;
                         gen_floor(&mut map, &mut floor_rng, FLOORS_CLEARED);
                         display_map(&map, &mut main_wins);
@@ -756,33 +769,34 @@ fn main() {
 
             thread::sleep(delay);
         }
-        // Death screen.
-        let mut death_wins = windowed::Container::new();
+        // Death/win screen.
+        let mut end_wins = windowed::Container::new();
 
         let main_wid = 38;
         let time_taken = time::Instant::now().duration_since(start).as_secs();
-        death_wins.add_win(windowed::Window::new(Point::new(3, 2)));
-        death_wins.add_win(windowed::Window::new(Point::new(40, 12)));
+        let (fname, txt_pos) = if unsafe { DEAD } { ("death.txt", Point::new(3, 2)) } else { ("win.txt", Point::new(26, 2)) };
+        end_wins.add_win(windowed::Window::new(txt_pos));
+        end_wins.add_win(windowed::Window::new(Point::new(40, 12)));
 
-        // Open the death screen file.
-        let mut f = fs::File::open("death.txt").unwrap();
-        let mut death_text = String::new();
-        f.read_to_string(&mut death_text);
+        // Open the relevant file.
+        let mut f = fs::File::open(fname).unwrap();
+        let mut text = String::new();
+        f.read_to_string(&mut text);
 
-        for line in death_text.lines() {
+        for line in text.lines() {
             add_line(
                 style::Color::White,
                 line,
-                &mut death_wins.windows[0],
+                &mut end_wins.windows[0],
                 128,
             );
-            death_wins.refresh();
-            print_win(&death_wins);
+            end_wins.refresh();
+            print_win(&end_wins);
             thread::sleep(delay);
         }
 
         clear_events();
-        let cur_win = &mut death_wins.windows[1];
+        let cur_win = &mut end_wins.windows[1];
 
         add_line(
             style::Color::White,
@@ -860,8 +874,8 @@ fn main() {
 
         cur_win.outline_with('#'.stylize());
         thread::sleep(time::Duration::from_millis(275));
-        death_wins.refresh();
-        print_win(&death_wins);
+        end_wins.refresh();
+        print_win(&end_wins);
 
         while let event::Event::Key(ke) = event::read().expect("what") {
             if ke.is_press() {
