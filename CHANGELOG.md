@@ -3,12 +3,19 @@
 ## New Features
 - Main menu
 - Death screen allowing the player to quit or go back to the main menu.
+- Win screen
+- Added the omega boss ('Ω') to floor 3.
 
 ## Balance Changes
 - The g enemy is too powerful to only appear on floor 2.
     - Floor range 2-2 -> 2-3
 - The v is simple enough to appear on floor 2 as well.
-    - Foor range 3-3 -> 2-3
+    - Floor range 3-3 -> 2-3
+- Lowercase b is often a difficult enemy to kill, so its cost has increased.
+    - Cost 34 -> 48
+
+## General Changes
+- Made the attack of the O show all the tiles it can attack.
 
 # v0.6.2-beta
 This update mainly adds new enemies and a win condition.

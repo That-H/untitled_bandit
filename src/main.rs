@@ -41,7 +41,7 @@ const KEYS_POS: Point = Point::new(83, 4);
 const KEYS_WID: usize = KEY_CLRS.len() * 4 + 1;
 const LOG: usize = 4;
 const LOG_POS: Point = Point::new(83, 10);
-const LOG_WID: usize = 25;
+const LOG_WID: usize = 27;
 const LOG_HGT: usize = 11;
 
 type StepEffect = dyn Fn(Point, &bn::Map<En>) -> Vec<bn::Cmd<En>>;
@@ -227,6 +227,14 @@ fn main() {
                 max: 1,
             },
         ),
+        (
+            'Ω',
+            TempMeta {
+                cost: 50,
+                floor_rang: 3..=3,
+                max: 1,
+            },
+        ),
     ]);
 
     let get_temp = |budget: u32,
@@ -265,9 +273,6 @@ fn main() {
         // Create the player if it is the first floor, otherwise get them.
         let pl = if floor_num == 0 {
             templates::get_player()
-        } else if floor_num == KILL_SCREEN as u32 {
-            println!("You win!");
-            std::process::exit(0);
         } else {
             map.get_ent(unsafe { PLAYER }).unwrap().clone()
         };
@@ -595,7 +600,7 @@ fn main() {
         unsafe {
             PLAYER = Point::ORIGIN;
             GLOBAL_TIME = 0;
-            KEYS_COLLECTED = [0; KILL_SCREEN];
+            KEYS_COLLECTED = [1; entity::KEY_CLRS_COUNT];
             LOG_MSGS.write().unwrap().clear();
             DEAD = false;
             FLOORS_CLEARED = 0;
@@ -697,7 +702,7 @@ fn main() {
                             event::KeyCode::Char('g') => ActionType::Fire(1),
                             event::KeyCode::Char('b') => ActionType::Fire(2),
                             event::KeyCode::Char('n') => {
-                                unsafe { 
+                                unsafe {
                                     NEXT_FLOOR = true;
                                     if FLOORS_CLEARED + 1 == KILL_SCREEN as u32 {
                                         break 'main;
@@ -705,8 +710,10 @@ fn main() {
                                 }
                                 ActionType::Wait
                             }
-                            event::KeyCode::Esc => { 
-                                unsafe { DEAD = true; }
+                            event::KeyCode::Esc => {
+                                unsafe {
+                                    DEAD = true;
+                                }
                                 break 'main;
                             }
                             _ => continue,
@@ -749,7 +756,6 @@ fn main() {
                 unsafe {
                     // Check if the player has died.
                     if map.get_ent(PLAYER).unwrap().is_dead() {
-                        println!("you are dead");
                         DEAD = true;
                         break 'main;
                     }
@@ -774,7 +780,11 @@ fn main() {
 
         let main_wid = 38;
         let time_taken = time::Instant::now().duration_since(start).as_secs();
-        let (fname, txt_pos) = if unsafe { DEAD } { ("death.txt", Point::new(3, 2)) } else { ("win.txt", Point::new(26, 2)) };
+        let (fname, txt_pos) = if unsafe { DEAD } {
+            ("death.txt", Point::new(3, 2))
+        } else {
+            ("win.txt", Point::new(26, 2))
+        };
         end_wins.add_win(windowed::Window::new(txt_pos));
         end_wins.add_win(windowed::Window::new(Point::new(40, 12)));
 
@@ -784,12 +794,7 @@ fn main() {
         f.read_to_string(&mut text);
 
         for line in text.lines() {
-            add_line(
-                style::Color::White,
-                line,
-                &mut end_wins.windows[0],
-                128,
-            );
+            add_line(style::Color::White, line, &mut end_wins.windows[0], 128);
             end_wins.refresh();
             print_win(&end_wins);
             thread::sleep(delay);
@@ -798,21 +803,12 @@ fn main() {
         clear_events();
         let cur_win = &mut end_wins.windows[1];
 
-        add_line(
-            style::Color::White,
-            "",
-            cur_win,
-            main_wid,
-        );
+        add_line(style::Color::White, "", cur_win, main_wid);
 
         // Real time taken.
         add_line(
             style::Color::White,
-            &format!(
-                "Time Elapsed: {}:{:02}",
-                time_taken / 60,
-                time_taken % 60,
-            ),
+            &format!("Time Elapsed: {}:{:02}", time_taken / 60, time_taken % 60,),
             cur_win,
             main_wid,
         );
@@ -820,10 +816,7 @@ fn main() {
         // In game time taken.
         add_line(
             style::Color::White,
-            &format!(
-                "Turns: {}",
-                unsafe { GLOBAL_TIME },
-            ),
+            &format!("Turns: {}", unsafe { GLOBAL_TIME },),
             cur_win,
             main_wid,
         );
@@ -831,10 +824,7 @@ fn main() {
         // Floor reached.
         add_line(
             style::Color::White,
-            &format!(
-                "Floor Reached: {}",
-                unsafe { FLOORS_CLEARED },
-            ),
+            &format!("Floor Reached: {}", unsafe { FLOORS_CLEARED },),
             cur_win,
             main_wid,
         );
@@ -842,20 +832,12 @@ fn main() {
         // Enemies killed.
         add_line(
             style::Color::White,
-            &format!(
-                "Enemies Killed: {}",
-                unsafe { KILLED },
-            ),
+            &format!("Enemies Killed: {}", unsafe { KILLED },),
             cur_win,
             main_wid,
         );
 
-        add_line(
-            style::Color::White,
-            "",
-            cur_win,
-            main_wid,
-        );
+        add_line(style::Color::White, "", cur_win, main_wid);
 
         // Infos.
         add_line(
@@ -865,12 +847,7 @@ fn main() {
             main_wid,
         );
 
-        add_line(
-            style::Color::White,
-            "",
-            cur_win,
-            main_wid,
-        );
+        add_line(style::Color::White, "", cur_win, main_wid);
 
         cur_win.outline_with('#'.stylize());
         thread::sleep(time::Duration::from_millis(275));

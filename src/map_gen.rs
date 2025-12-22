@@ -50,6 +50,41 @@ impl From<Cell> for usize {
     }
 }
 
+/// Insert the provided rectangle into the map. Automatically creates a door between it
+/// and the host at door_pos.
+pub fn insert_rect(
+    rects: &mut Vec<Rect>,
+    occupied: &mut HashMap<Point, Cell>,
+    rect: Rect,
+    host: usize,
+    door_pos: Point,
+) {
+    let r = rects.len();
+    let top = rect.top;
+    let bottom = rect.bottom();
+    let left = rect.left;
+    let right = rect.right();
+    for p in rect.cells() {
+        let mut wall = p.y == top || p.y == bottom || p.x == left || p.x == right;
+        if r != 0 && p == door_pos {
+            wall = false;
+        }
+
+        occupied
+            .entry(p)
+            .and_modify(|c| {
+                if wall {
+                    c.add_id(r);
+                } else {
+                    *c = Cell::Door(r, host);
+                }
+            })
+            .or_insert(Cell::from_id(r, wall));
+    }
+
+    rects.push(rect);
+}
+
 /// Generate a new rectangle in the given map (rect list and cell hashmap).
 /// Will not create a new rectangle with a door to an illegal host.
 pub fn gen_rect_in<R: Rng>(
@@ -163,29 +198,7 @@ pub fn gen_rect_in<R: Rng>(
         }
     };
 
-    let top = rect.top;
-    let bottom = rect.bottom();
-    let left = rect.left;
-    let right = rect.right();
-    for p in rect.cells() {
-        let mut wall = p.y == top || p.y == bottom || p.x == left || p.x == right;
-        if r != 0 && p == init_pos {
-            wall = false;
-        }
-
-        occupied
-            .entry(p)
-            .and_modify(|c| {
-                if wall {
-                    c.add_id(r);
-                } else {
-                    *c = Cell::Door(r, host);
-                }
-            })
-            .or_insert(Cell::from_id(r, wall));
-    }
-
-    rects.push(rect);
+    insert_rect(rects, occupied, rect, host, init_pos);
 }
 
 /// Create various connected rectangles. Returns a map of cells,

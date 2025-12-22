@@ -37,7 +37,7 @@ pub const KEY_CLRS: [style::Color; 4] = [
     style::Color::Yellow,
     style::Color::Blue,
 ];
-const KEY_CLRS_COUNT: usize = KEY_CLRS.len();
+pub const KEY_CLRS_COUNT: usize = KEY_CLRS.len();
 const WALL_SENTRY_CHAR: char = '█';
 
 /// Displays a log message.
@@ -227,7 +227,7 @@ impl bn::Entity for En {
             } else {
                 let mut handle = LOG_MSGS.write().unwrap();
                 handle.push(format!("{} is dead", *self.ch.content()).into());
-                unsafe { 
+                unsafe {
                     ENEMIES_REMAINING -= 1;
                     KILLED += 1;
                 }
@@ -453,6 +453,11 @@ impl bn::Entity for En {
                             acted = true;
                             do_attack(pos, cmd, atk_dir, false, i);
                         }
+                    }
+                    ActionType::ForceMelee(dir, idx) => {
+                        // Always occurs, so this always counts as an action.
+                        acted = true;
+                        do_attack(pos, cmd, dir, false, idx);
                     }
                     ActionType::Fire(idx) => {
                         // Verify there is an attack at idx before using it.

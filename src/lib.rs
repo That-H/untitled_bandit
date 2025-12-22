@@ -315,6 +315,8 @@ pub enum ActionType {
     /// Use a melee attack against the player if possible. If multiple are possible,
     /// the first one found will be used.
     TryMelee,
+    /// Use the melee attack with the given direction and index, regardless of whether it would do anything.
+    ForceMelee(Point, usize),
     /// Use the ranged attack at the given index.
     Fire(usize),
     /// Pathfind towards the player.
