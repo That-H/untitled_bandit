@@ -10,6 +10,8 @@ pub enum Cell {
     Wall(Vec<usize>),
     /// A cell inside the room of the given id.
     Inner(usize),
+    /// A slippery cell inside the given room.
+    Ice(usize),
     /// A cell joining the two room ids.
     Door(usize, usize),
 }
@@ -28,6 +30,14 @@ impl Cell {
             ids.push(id);
         }
     }
+
+    fn is_door(&self) -> bool {
+        if let &Cell::Door(_, _) = self {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl From<Cell> for bool {
@@ -35,6 +45,7 @@ impl From<Cell> for bool {
         match val {
             Cell::Wall(_) => true,
             Cell::Inner(_) => false,
+            Cell::Ice(_) => false,
             Cell::Door(_, _) => false,
         }
     }
@@ -45,6 +56,7 @@ impl From<Cell> for usize {
         match val {
             Cell::Wall(ids) => ids[0] + 1,
             Cell::Inner(_id) => 0,
+            Cell::Ice(_id) => 0,
             Cell::Door(_id1, _id2) => 0,
         }
     }
@@ -83,6 +95,138 @@ pub fn insert_rect(
     }
 
     rects.push(rect);
+}
+
+/// Turn the rect at the given index into an ice puzzle, if it has more than 1 door.
+pub fn ice_rect<R: Rng>(
+    rects: &mut Vec<Rect>,
+    occupied: &mut HashMap<Point, Cell>,
+    rng: &mut R,
+    id: usize,
+    wall_freq: f64,
+    min_path_len: u16
+) {
+    let rect = rects[id];
+    let mut tiles = HashMap::new();
+    let mut doors = Vec::new();
+
+    // Make sure the edges are all solid in the rect.
+    for p in rect.edges() {
+        tiles.insert(p, true);
+        if occupied[&p].is_door() {
+            doors.push(p);
+        }
+    }
+    
+    if doors.len() <= 1 {
+        return;
+    }
+
+    let init_tiles = tiles.clone();
+
+    #[derive(PartialEq, Eq)]
+    struct State {
+        pos: Point,
+        moves: u16,
+    }
+
+    impl PartialOrd for State {
+        fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl Ord for State {
+        fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+            other.moves.cmp(&self.moves)
+        }
+    }
+
+    'generator: loop {
+        // Generate the random walls.
+        tiles = init_tiles.clone();
+
+        for p in rect.inner_cells() {
+            tiles.insert(p, rng.random_bool(wall_freq));
+        }
+
+        let nbrs = |pos: Point| {
+            let mut adj = Vec::new();
+            let mut dir = Point::new(1, 0);
+
+            for _ in 0..4 {
+                dir.rotate_90_cw_ip();
+                let mut cur = pos;
+                adj.push(loop {
+                    let nx = cur + dir;
+                    let tile = tiles.get(&nx);
+                    if doors.contains(&nx)  {
+                        break nx;
+                    } else if tile.is_none() {
+                        break cur;
+                    } else if let Some(b) = tile && *b {
+                        break cur;
+                    } else {
+                        cur = nx;
+                    }
+                });
+            }
+
+            adj
+        };
+
+        'verifier: for d in &doors {
+            // Check there is path to every door from every door.
+            let mut heap = std::collections::BinaryHeap::new();
+            let mut dists = HashMap::new();
+            let mut doors_found = vec![false; doors.len()];
+
+            heap.push(State { pos: *d, moves: 0 });
+
+            while let Some(State { pos, moves }) = heap.pop() {
+                let dist = match dists.get(&pos) {
+                    Some(d) => *d,
+                    None => 999,
+                };
+                // Overwrite and propagate if this path is better.
+                if dist > moves {
+                    dists.insert(pos, moves);
+                    // If we reach a door, record this.
+                    if let Some(idx) = doors.iter().position(|p| *p == pos) {
+                        doors_found[idx] = true;
+                        // If all doors have been reached, check they conform to path length
+                        // regulations.
+                        if doors_found.iter().all(|f| *f) {
+                            for inner_d in &doors {
+                                if dists[inner_d] < min_path_len && inner_d != d {
+                                    continue 'generator;
+                                }
+                            }
+                            continue 'verifier;
+                        }
+                    }
+
+                    for nbr in nbrs(pos) {
+                        heap.push(State { pos: nbr, moves: moves + 1 });
+                    }
+                }
+            }
+
+            // Didn't reach all the doors, so regenerate.
+            continue 'generator;
+        }
+
+        // Being here means the generator has created a valid puzzle.
+        break
+    }
+
+    for (p, t) in tiles {
+        let cl = occupied.get_mut(&p).unwrap();
+        match cl {
+            Cell::Inner(id) => *cl = if t { Cell::Wall(vec![*id]) } else { Cell::Ice(*id) },
+            _ => continue,
+        }
+    }
 }
 
 /// Generate a new rectangle in the given map (rect list and cell hashmap).
@@ -209,6 +353,7 @@ pub fn map_gen<R: Rng>(
     max_size: i32,
     min_size: i32,
     rng: &mut R,
+    ice_prevalence: f64,
 ) -> (HashMap<Point, Cell>, Vec<Rect>) {
     let mut rects: Vec<Rect> = Vec::new();
     // let mut rng = rand::rngs::StdRng::from_seed([56; 32]);
@@ -217,6 +362,12 @@ pub fn map_gen<R: Rng>(
 
     for _r in 0..rect_count {
         gen_rect_in(&mut rects, &mut occupied, rng, min_size, max_size, &[]);
+    }
+
+    for id in 1..rects.len() {
+        if rng.random_bool(ice_prevalence) {
+            ice_rect(&mut rects, &mut occupied, rng, id, 0.3, 3);
+        }
     }
 
     (occupied, rects)

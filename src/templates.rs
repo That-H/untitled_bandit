@@ -591,7 +591,7 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 atks: ring_atk.clone(),
             },
             EntityTemplate {
-                max_hp: 15,
+                max_hp: 10,
                 actions: vec![
                     ActionType::Arbitrary(Box::new(|map, _en, pos| {
                         let pl = unsafe { PLAYER };

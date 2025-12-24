@@ -1,10 +1,12 @@
 # v0.6.3-beta
+- Adds ice puzzles, end screens, and a new boss.
 
 ## New Features
 - Main menu
 - Death screen allowing the player to quit or go back to the main menu.
 - Win screen
 - Added the omega boss ('Ω') to floor 3.
+- Rooms with more than one door have a 10% chance to become an ice puzzle room.
 
 ## Balance Changes
 - The g enemy is too powerful to only appear on floor 2.
@@ -16,6 +18,8 @@
 
 ## General Changes
 - Made the attack of the O show all the tiles it can attack.
+- Prevented the log displaying a health indicator if the target was a door.
+- Reduced the size of the attack display window.
 
 # v0.6.2-beta
 This update mainly adds new enemies and a win condition.

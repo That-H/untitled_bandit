@@ -28,6 +28,8 @@ pub const WALL_CLRS: [style::Color; KILL_SCREEN] = [
     style::Color::DarkMagenta,
     style::Color::DarkRed,
 ];
+pub const ICE_CHAR: char = '*';
+pub const ICE_CLR: style::Color = style::Color::Cyan;
 
 pub use bandit as bn;
 pub use bn::Point;
@@ -83,8 +85,7 @@ impl Tile {
     /// If the tile is locked and the corresponding key has been collected, unlocks the door.
     pub fn unlock(&mut self) {
         if self.unlockable() {
-            let lck_val = self.locked.unwrap() as usize;
-            self.locked = None;
+            let lck_val = self.locked.take().unwrap() as usize;
             self.blocking = false;
             self.ch = Some(DOOR_CHAR.with(get_door_clr()));
             unsafe { crate::entity::KEYS_COLLECTED[lck_val] -= 1 }

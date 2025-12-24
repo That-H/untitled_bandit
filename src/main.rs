@@ -34,8 +34,8 @@ const STATS: usize = 1;
 const STATS_POS: Point = Point::new(22, 4);
 const STATS_WID: usize = 15;
 const ATKS: usize = 2;
-const ATKS_POS: Point = Point::new(28, 12);
-const ATKS_WID: usize = 9;
+const ATKS_POS: Point = Point::new(32, 12);
+const ATKS_WID: usize = 5;
 const KEYS: usize = 3;
 const KEYS_POS: Point = Point::new(83, 4);
 const KEYS_WID: usize = KEY_CLRS.len() * 4 + 1;
@@ -283,12 +283,14 @@ fn main() {
         unsafe { PLAYER = Point::ORIGIN }
         map.insert_entity(pl, unsafe { PLAYER });
 
+        let ice_prevalence = if cfg!(debug_assertions) { 1.0 } else { 0.1 };
         // Generate the rooms of the map.
         let (mut grid, mut rooms) = map_gen::map_gen(
             ROOMS - SPECIAL_ROOMS + floor_num * 3,
             MAX_WIDTH,
             MIN_WIDTH,
             rng,
+            ice_prevalence,
         );
 
         // Whether we have chosen an exit room yet.
@@ -325,16 +327,25 @@ fn main() {
                 budget = 75;
                 map.insert_tile(
                     get_exit(false, floor_num as usize),
-                    r.top_left() + Point::new(r.wid / 2, -r.hgt / 2),
+                    r.top_left() + Point::new(1, -1),
                 );
             }
 
             'enemy_gen: while let Some((temp, cost)) = get_temp(budget, rng, elite, &temp_counts) {
                 budget -= cost;
-                // Exit early if there is no where to place the entity.
-                let Some(nx) = cells.pop() else {
-                    break 'enemy_gen;
+                let nx = loop {
+                    // Exit early if there is no where to place the entity.
+                    let Some(nx) = cells.pop() else {
+                        break 'enemy_gen;
+                    };
+
+                    let Some(tl) = grid.get(&nx) else { continue };
+                    match tl {
+                        map_gen::Cell::Ice(_) | map_gen::Cell::Wall(_) => continue,
+                        _ => break nx,
+                    }
                 };
+
                 *temp_counts.entry(*temp.ch.content()).or_insert(0) += 1;
 
                 map.insert_entity(En::from_template(temp, false, true), nx);
@@ -363,6 +374,7 @@ fn main() {
             for x in -(((MAP_WIDTH / 2) + MAP_OFFSET) as i32)..(MAP_WIDTH / 2 + MAP_OFFSET) as i32 {
                 let pos = Point::new(x, y);
                 let mut blocking = false;
+                let mut slippery = false;
                 let mut door = None;
 
                 // If there is already a tile there, don't overwrite it.
@@ -379,6 +391,11 @@ fn main() {
                         map_gen::Cell::Inner(_) => {
                             blocking = false;
                             None
+                        }
+                        map_gen::Cell::Ice(_) => {
+                            blocking = false;
+                            slippery = true;
+                            Some(ICE_CHAR.on(ICE_CLR))
                         }
                         map_gen::Cell::Door(id1, id2) => {
                             blocking = false;
@@ -402,7 +419,7 @@ fn main() {
                         blocking,
                         empt: false,
                         revealed,
-                        slippery: false,
+                        slippery,
                         door,
                         step_effect: None,
                         locked: None,
@@ -600,7 +617,10 @@ fn main() {
         unsafe {
             PLAYER = Point::ORIGIN;
             GLOBAL_TIME = 0;
-            KEYS_COLLECTED = [1; entity::KEY_CLRS_COUNT];
+
+            // Give a lot of keys on a debug build.
+            let key_count = if cfg!(debug_assertions) { 9 } else { 0 };
+            KEYS_COLLECTED = [key_count; entity::KEY_CLRS_COUNT];
             LOG_MSGS.write().unwrap().clear();
             DEAD = false;
             FLOORS_CLEARED = 0;
@@ -702,6 +722,7 @@ fn main() {
                             event::KeyCode::Char('g') => ActionType::Fire(1),
                             event::KeyCode::Char('b') => ActionType::Fire(2),
                             event::KeyCode::Char('n') => {
+                                #[cfg(debug_assertions)]
                                 unsafe {
                                     NEXT_FLOOR = true;
                                     if FLOORS_CLEARED + 1 == KILL_SCREEN as u32 {

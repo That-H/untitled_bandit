@@ -353,13 +353,15 @@ impl bn::Entity for En {
                                                 )
                                                 .into(),
                                             );
-                                            handle.push(
-                                                format!(
-                                                    "{} hp: {}/{}->{}/{}",
-                                                    e_ch, old, e.hp.max, *e.hp, e.hp.max
-                                                )
-                                                .into(),
-                                            );
+                                            if e_ch != WALL_SENTRY_CHAR {
+                                                handle.push(
+                                                    format!(
+                                                        "{} hp: {}/{}->{}/{}",
+                                                        e_ch, old, e.hp.max, *e.hp, e.hp.max
+                                                    )
+                                                    .into(),
+                                                );
+                                            }
                                         },
                                     )));
                                 }
