@@ -54,6 +54,7 @@ Movement can be achieved using any of the following key sets (choose whichever y
 
 The player may also choose to do nothing for a turn, which is performed by pressing the period ('.').
 To end the current run, press the escape key.
+To return to the most recently used door, press 'r'. This can only be done when no enemies are on screen.
 
 ## Running The Game
 

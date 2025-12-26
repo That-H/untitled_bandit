@@ -1,5 +1,5 @@
 # v0.6.3-beta
-- Adds ice puzzles, end screens, and a new boss.
+Adds ice puzzles, end screens, and a new boss.
 
 ## New Features
 - Main menu
@@ -7,6 +7,7 @@
 - Win screen
 - Added the omega boss ('Ω') to floor 3.
 - Rooms with more than one door have a 10% chance to become an ice puzzle room.
+- Returning to the previous door to prevent softlocks.
 
 ## Balance Changes
 - The g enemy is too powerful to only appear on floor 2.

@@ -30,6 +30,8 @@ pub static mut NEXT_FLOOR: bool = false;
 pub static mut KEYS_COLLECTED: [u32; KEY_CLRS_COUNT] = [0; KEY_CLRS_COUNT];
 /// Contains messages about what has occurred.
 pub static LOG_MSGS: RwLock<Vec<LogMsg>> = RwLock::new(Vec::new());
+/// Stack of all recently entered door positions.
+pub static LAST_DOOR: RwLock<Option<Point>> = RwLock::new(None);
 
 pub const KEY_CLRS: [style::Color; 4] = [
     style::Color::DarkRed,
@@ -552,6 +554,25 @@ impl bn::Entity for En {
                     {
                         // Door check.
                         if let Some((room1, room2)) = &t.door {
+                            // Record the door we just entered.
+                            let mut write = LAST_DOOR.write().unwrap();
+                            let mut should_write = true;
+
+                            // If we just saw this door, don't write it again.
+                            if let Some(dr) = *write && dr != pos {
+                                // Check if the sentinel value is present. If it is, then we must
+                                // be reverting to the previous door, so remove the sentinel and
+                                // don't write the current position.
+                                if dr == Point::ORIGIN {
+                                    write.take();
+                                    should_write = false;
+                                }
+                            } 
+
+                            if should_write {
+                                write.replace(pos);
+                            }
+
                             let rect = if room1.contains(nx) { room1 } else { room2 };
                             let mut doors = Vec::new();
                             // Flag to say whether or not we are locking all the doors due to

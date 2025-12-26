@@ -280,7 +280,10 @@ fn main() {
         // Reinitialise the map.
         *map = bandit::Map::new(0, 0);
 
-        unsafe { PLAYER = Point::ORIGIN }
+        unsafe { 
+            PLAYER = Point::ORIGIN;
+            LAST_DOOR.write().unwrap().take();
+        }
         map.insert_entity(pl, unsafe { PLAYER });
 
         let ice_prevalence = if cfg!(debug_assertions) { 1.0 } else { 0.1 };
@@ -622,6 +625,7 @@ fn main() {
             let key_count = if cfg!(debug_assertions) { 9 } else { 0 };
             KEYS_COLLECTED = [key_count; entity::KEY_CLRS_COUNT];
             LOG_MSGS.write().unwrap().clear();
+            LAST_DOOR.write().unwrap().take();
             DEAD = false;
             FLOORS_CLEARED = 0;
             NEXT_FLOOR = false;
@@ -730,6 +734,23 @@ fn main() {
                                     }
                                 }
                                 ActionType::Wait
+                            }
+                            event::KeyCode::Char('r') => {
+                                let read = LAST_DOOR.read().unwrap();
+                                let disp = unsafe {
+                                    let old = PLAYER;
+                                    if ENEMIES_REMAINING == 0 {
+                                        if let Some(p) = *read && p != Point::ORIGIN {
+                                            PLAYER = p;
+                                            p - old
+                                        } else { 
+                                            Point::ORIGIN
+                                        }
+                                    } else {
+                                        Point::ORIGIN
+                                    }
+                                };
+                                ActionType::TryMove(disp)
                             }
                             event::KeyCode::Esc => {
                                 unsafe {
