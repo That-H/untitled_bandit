@@ -2,6 +2,7 @@
 !/target/release/
 /target/release/*
 !/target/release/untitled_bandit.exe
+!/target/prototypes
 /doc/
 
 *.un~

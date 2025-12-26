@@ -6,9 +6,9 @@ use crate::bn;
 use attacks::*;
 use bn::Entity;
 use std::cell::RefCell;
-use std::sync::RwLock;
-use std::rc::Rc;
 use std::fmt;
+use std::rc::Rc;
+use std::sync::RwLock;
 
 /// Type of action the player will perform.
 pub static mut ACTION: ActionType = ActionType::Wait;
@@ -18,6 +18,8 @@ pub static mut PLAYER: Point = Point::new(0, 0);
 pub static mut DEAD: bool = false;
 /// Number of enemies remaining in the current room.
 pub static mut ENEMIES_REMAINING: usize = 0;
+/// Number of enemies killed over the course of the run.
+pub static mut KILLED: u32 = 0;
 /// Number of actions taken by the player.
 pub static mut GLOBAL_TIME: u32 = 0;
 /// Number of floors cleared.
@@ -28,16 +30,17 @@ pub static mut NEXT_FLOOR: bool = false;
 pub static mut KEYS_COLLECTED: [u32; KEY_CLRS_COUNT] = [0; KEY_CLRS_COUNT];
 /// Contains messages about what has occurred.
 pub static LOG_MSGS: RwLock<Vec<LogMsg>> = RwLock::new(Vec::new());
+/// Stack of all recently entered door positions.
+pub static LAST_DOOR: RwLock<Option<Point>> = RwLock::new(None);
 
 pub const KEY_CLRS: [style::Color; 4] = [
     style::Color::DarkRed,
     style::Color::Green,
-    style::Color::Blue,
     style::Color::Yellow,
+    style::Color::Blue,
 ];
-const KEY_CLRS_COUNT: usize = KEY_CLRS.len();
+pub const KEY_CLRS_COUNT: usize = KEY_CLRS.len();
 const WALL_SENTRY_CHAR: char = '█';
-const WALL_SENTRY_CLR: style::Color = style::Color::Yellow;
 
 /// Displays a log message.
 #[derive(Clone)]
@@ -224,10 +227,12 @@ impl bn::Entity for En {
             if self.is_player {
                 unsafe { DEAD = true }
             } else {
-
                 let mut handle = LOG_MSGS.write().unwrap();
                 handle.push(format!("{} is dead", *self.ch.content()).into());
-                unsafe { ENEMIES_REMAINING -= 1 }
+                unsafe {
+                    ENEMIES_REMAINING -= 1;
+                    KILLED += 1;
+                }
                 cmd.queue(bn::Cmd::new_here().delete_entity());
             }
             return;
@@ -341,8 +346,24 @@ impl bn::Entity for En {
                                             e.apply_dmg(dmg_inst);
                                             let mut handle = LOG_MSGS.write().unwrap();
                                             let e_ch = *e.ch.content();
-                                            handle.push(format!("{} {} -> {}", ch, dmg_inst.total_dmg(), e_ch).into());
-                                            handle.push(format!("{} hp: {}/{}->{}/{}", e_ch, old, e.hp.max, *e.hp, e.hp.max).into());
+                                            handle.push(
+                                                format!(
+                                                    "{} {} -> {}",
+                                                    ch,
+                                                    dmg_inst.total_dmg(),
+                                                    e_ch
+                                                )
+                                                .into(),
+                                            );
+                                            if e_ch != WALL_SENTRY_CHAR {
+                                                handle.push(
+                                                    format!(
+                                                        "{} hp: {}/{}->{}/{}",
+                                                        e_ch, old, e.hp.max, *e.hp, e.hp.max
+                                                    )
+                                                    .into(),
+                                                );
+                                            }
                                         },
                                     )));
                                 }
@@ -437,6 +458,11 @@ impl bn::Entity for En {
                             do_attack(pos, cmd, atk_dir, false, i);
                         }
                     }
+                    ActionType::ForceMelee(dir, idx) => {
+                        // Always occurs, so this always counts as an action.
+                        acted = true;
+                        do_attack(pos, cmd, dir, false, idx);
+                    }
                     ActionType::Fire(idx) => {
                         // Verify there is an attack at idx before using it.
                         if cur_en.atks.ranged_atks.len() > idx {
@@ -528,6 +554,25 @@ impl bn::Entity for En {
                     {
                         // Door check.
                         if let Some((room1, room2)) = &t.door {
+                            // Record the door we just entered.
+                            let mut write = LAST_DOOR.write().unwrap();
+                            let mut should_write = true;
+
+                            // If we just saw this door, don't write it again.
+                            if let Some(dr) = *write && dr != pos {
+                                // Check if the sentinel value is present. If it is, then we must
+                                // be reverting to the previous door, so remove the sentinel and
+                                // don't write the current position.
+                                if dr == Point::ORIGIN {
+                                    write.take();
+                                    should_write = false;
+                                }
+                            } 
+
+                            if should_write {
+                                write.replace(pos);
+                            }
+
                             let rect = if room1.contains(nx) { room1 } else { room2 };
                             let mut doors = Vec::new();
                             // Flag to say whether or not we are locking all the doors due to
@@ -577,7 +622,7 @@ impl bn::Entity for En {
                                         92,
                                         false,
                                         vec![ActionType::Wait],
-                                        WALL_SENTRY_CHAR.with(WALL_SENTRY_CLR),
+                                        WALL_SENTRY_CHAR.with(get_door_clr()),
                                         Special::WallSentry,
                                         Vec::new(),
                                         AtkPat::empty(),

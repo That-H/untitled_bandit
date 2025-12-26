@@ -8,13 +8,34 @@ use std::ops::{self, Deref};
 pub const DELAY: u64 = 30;
 pub const VFX_DELAY: u64 = 200;
 pub const MAP_OFFSET: usize = 0;
-pub const DIR_CHARS: [char; 4] = ['v', '<', '^', '>'];
+/// Floor where the game ends.
+pub const KILL_SCREEN: usize = 4;
+pub const DIR_CHARS: [char; KILL_SCREEN] = ['v', '<', '^', '>'];
 pub const DOOR_CHAR: char = '/';
-pub const DOOR_CLR: style::Color = style::Color::Yellow;
+pub const DOOR_CLRS: [style::Color; KILL_SCREEN] = [
+    style::Color::White,
+    style::Color::DarkGrey,
+    style::Color::Rgb {
+        r: 255,
+        g: 165,
+        b: 0,
+    },
+    style::Color::DarkYellow,
+];
+pub const WALL_CLRS: [style::Color; KILL_SCREEN] = [
+    style::Color::DarkGrey,
+    style::Color::White,
+    style::Color::DarkMagenta,
+    style::Color::DarkRed,
+];
+pub const ICE_CHAR: char = '*';
+pub const ICE_CLR: style::Color = style::Color::Cyan;
 
 pub use bandit as bn;
 pub use bn::Point;
 use bn::Tile as Ti;
+
+use crate::entity::FLOORS_CLEARED;
 
 pub mod attacks;
 
@@ -23,6 +44,11 @@ pub mod map_gen;
 pub mod entity;
 
 pub mod templates;
+
+/// Returns the colour of doors on the current floor.
+pub fn get_door_clr() -> style::Color {
+    DOOR_CLRS[unsafe { FLOORS_CLEARED as usize }]
+}
 
 /// A single tile in a map.
 pub struct Tile {
@@ -59,12 +85,14 @@ impl Tile {
     /// If the tile is locked and the corresponding key has been collected, unlocks the door.
     pub fn unlock(&mut self) {
         if self.unlockable() {
-            let lck_val = self.locked.unwrap() as usize;
-            self.locked = None;
+            let lck_val = self.locked.take().unwrap() as usize;
             self.blocking = false;
-            self.ch = Some(DOOR_CHAR.with(DOOR_CLR));
+            self.ch = Some(DOOR_CHAR.with(get_door_clr()));
             unsafe { crate::entity::KEYS_COLLECTED[lck_val] -= 1 }
-            entity::LOG_MSGS.write().unwrap().push(format!("{} unlocks door", templates::PLAYER_CHARACTER).into());
+            entity::LOG_MSGS
+                .write()
+                .unwrap()
+                .push(format!("{} unlocks door", templates::PLAYER_CHARACTER).into());
         }
     }
 
@@ -105,14 +133,15 @@ impl bn::Tile for Tile {
     type Repr = StyleCh;
 
     fn repr(&self) -> Self::Repr {
+        let flrs = unsafe { crate::entity::FLOORS_CLEARED as usize };
         if !self.revealed {
             ' '.stylize()
         } else if let Some(c) = self.ch {
             c
         } else if self.blocking {
-            '#'.dark_grey()
+            '#'.with(WALL_CLRS[flrs])
         } else if !self.empt {
-            '.'.dark_grey()
+            '.'.with(WALL_CLRS[flrs])
         } else {
             ' '.stylize()
         }
@@ -287,6 +316,8 @@ pub enum ActionType {
     /// Use a melee attack against the player if possible. If multiple are possible,
     /// the first one found will be used.
     TryMelee,
+    /// Use the melee attack with the given direction and index, regardless of whether it would do anything.
+    ForceMelee(Point, usize),
     /// Use the ranged attack at the given index.
     Fire(usize),
     /// Pathfind towards the player.

@@ -6,10 +6,10 @@ use bn::windowed;
 use crossterm::style::{self, Stylize};
 use crossterm::{cursor, event, execute, queue, terminal};
 use entity::*;
-use io::Write;
+use io::{Read, Write};
 use rand::prelude::{IndexedRandom, SliceRandom};
 use rand::{Rng, SeedableRng};
-use std::{collections::HashMap, io, thread};
+use std::{collections::HashMap, fs, io, thread, time};
 use untitled_bandit::*;
 
 const ROOMS: u32 = 10;
@@ -34,14 +34,14 @@ const STATS: usize = 1;
 const STATS_POS: Point = Point::new(22, 4);
 const STATS_WID: usize = 15;
 const ATKS: usize = 2;
-const ATKS_POS: Point = Point::new(28, 12);
-const ATKS_WID: usize = 9;
+const ATKS_POS: Point = Point::new(32, 12);
+const ATKS_WID: usize = 5;
 const KEYS: usize = 3;
 const KEYS_POS: Point = Point::new(83, 4);
 const KEYS_WID: usize = KEY_CLRS.len() * 4 + 1;
 const LOG: usize = 4;
 const LOG_POS: Point = Point::new(83, 10);
-const LOG_WID: usize = 25;
+const LOG_WID: usize = 27;
 const LOG_HGT: usize = 11;
 
 type StepEffect = dyn Fn(Point, &bn::Map<En>) -> Vec<bn::Cmd<En>>;
@@ -99,55 +99,167 @@ fn get_key(revealed: bool, key_id: u32) -> Tile {
         slippery: false,
         step_effect: Some(Box::new(move |pos, _| {
             unsafe { KEYS_COLLECTED[key_id as usize] += 1 }
-            LOG_MSGS.write().unwrap().push(format!("{} gains key", templates::PLAYER_CHARACTER).into());
+            LOG_MSGS
+                .write()
+                .unwrap()
+                .push(format!("{} gains key", templates::PLAYER_CHARACTER).into());
             vec![bn::Cmd::new_on(pos).modify_tile(Box::new(|t: &mut Tile| {
                 t.step_effect = None;
-                t.ch = Some('.'.stylize());
+                t.ch = Some('.'.with(WALL_CLRS[unsafe { FLOORS_CLEARED as usize }]));
             }))]
         })),
         locked: None,
     }
 }
 
+// Metadata about templates.
+struct TempMeta {
+    // Cost to spawn the enemy in a room.
+    cost: u32,
+    // Range of floors it can spawn in.
+    floor_rang: std::ops::RangeInclusive<u32>,
+    // Maximum amount of this entity that can spawn in a room.
+    max: u32,
+}
+
 fn main() {
-    // Rng used for map generation. Has to be separate to ensure determinism
-    // with the map and its contents.
-    let mut floor_rng = rand::rngs::StdRng::from_os_rng();
-
-    // Map used through the game.
-    let mut map: bn::Map<En> = bn::Map::new(MAP_WIDTH, MAP_HEIGHT);
-
     // Raw mode required for windowed to work correctly.
     terminal::enable_raw_mode();
     execute!(io::stdout(), terminal::Clear(terminal::ClearType::All));
 
-    let (mut templates, elites) = templates::get_templates();
+    let (templates, elites) = templates::get_templates();
 
-    // Sort the costs and templates using those costs so that the templates do not have to be returned in sorted order.
-    // e, h, l, k, b, w
-    let costs = HashMap::from([
-        ('e', 12),
-        ('h', 20),
-        ('l', 45),
-        ('k', 37),
-        ('b', 34),
-        ('w', 40),
-        ('o', 15),
-        ('v', 45),
-        ('B', 50),
+    // Contains additional metadata about each enemy type.
+    let meta = HashMap::from([
+        (
+            'e',
+            TempMeta {
+                cost: 12,
+                floor_rang: 0..=1,
+                max: 3,
+            },
+        ),
+        (
+            'h',
+            TempMeta {
+                cost: 22,
+                floor_rang: 0..=1,
+                max: 2,
+            },
+        ),
+        (
+            'l',
+            TempMeta {
+                cost: 60,
+                floor_rang: 3..=3,
+                max: 1,
+            },
+        ),
+        (
+            'k',
+            TempMeta {
+                cost: 37,
+                floor_rang: 1..=2,
+                max: 2,
+            },
+        ),
+        (
+            'b',
+            TempMeta {
+                cost: 48,
+                floor_rang: 3..=3,
+                max: 1,
+            },
+        ),
+        (
+            'w',
+            TempMeta {
+                cost: 31,
+                floor_rang: 1..=2,
+                max: 2,
+            },
+        ),
+        (
+            'o',
+            TempMeta {
+                cost: 15,
+                floor_rang: 0..=1,
+                max: 3,
+            },
+        ),
+        (
+            'v',
+            TempMeta {
+                cost: 45,
+                floor_rang: 2..=3,
+                max: 2,
+            },
+        ),
+        (
+            'g',
+            TempMeta {
+                cost: 35,
+                floor_rang: 2..=3,
+                max: 2,
+            },
+        ),
+        (
+            'O',
+            TempMeta {
+                cost: 50,
+                floor_rang: 1..=1,
+                max: 1,
+            },
+        ),
+        (
+            'B',
+            TempMeta {
+                cost: 50,
+                floor_rang: 2..=2,
+                max: 1,
+            },
+        ),
+        (
+            'E',
+            TempMeta {
+                cost: 50,
+                floor_rang: 0..=0,
+                max: 1,
+            },
+        ),
+        (
+            'Ω',
+            TempMeta {
+                cost: 50,
+                floor_rang: 3..=3,
+                max: 1,
+            },
+        ),
     ]);
-    templates.sort_by_key(|temp| costs[temp.ch.content()]);
 
     let get_temp = |budget: u32,
                     rng: &mut rand::rngs::StdRng,
-                    elite: bool|
+                    elite: bool,
+                    temp_counts: &HashMap<char, u32>|
      -> Option<(&EntityTemplate, u32)> {
         let temps = if elite { &elites } else { &templates };
         let possible: Vec<_> = temps
             .iter()
             .filter_map(|t| {
-                let cost = costs[t.ch.content()];
-                if cost <= budget {
+                let ch = t.ch.content();
+                let TempMeta {
+                    cost,
+                    floor_rang: flrs,
+                    max,
+                } = &meta[ch];
+                let cost = *cost;
+                if cost <= budget
+                    && flrs.contains(&unsafe { FLOORS_CLEARED })
+                    && match temp_counts.get(ch) {
+                        Some(c) => c < max,
+                        _ => true,
+                    }
+                {
                     Some((t, cost))
                 } else {
                     None
@@ -168,12 +280,21 @@ fn main() {
         // Reinitialise the map.
         *map = bandit::Map::new(0, 0);
 
-        unsafe { PLAYER = Point::ORIGIN }
+        unsafe { 
+            PLAYER = Point::ORIGIN;
+            LAST_DOOR.write().unwrap().take();
+        }
         map.insert_entity(pl, unsafe { PLAYER });
 
+        let ice_prevalence = if cfg!(debug_assertions) { 1.0 } else { 0.1 };
         // Generate the rooms of the map.
-        let (mut grid, mut rooms) =
-            map_gen::map_gen(ROOMS - SPECIAL_ROOMS, MAX_WIDTH, MIN_WIDTH, rng);
+        let (mut grid, mut rooms) = map_gen::map_gen(
+            ROOMS - SPECIAL_ROOMS + floor_num * 3,
+            MAX_WIDTH,
+            MIN_WIDTH,
+            rng,
+            ice_prevalence,
+        );
 
         // Whether we have chosen an exit room yet.
         let mut done_exit = false;
@@ -184,10 +305,11 @@ fn main() {
 
         // Generate enemies.
         for (n, r) in rooms.iter().enumerate().skip(1) {
-            let mut budget = (r.wid * r.hgt) as u32 / 2;
+            let mut budget = (r.wid * r.hgt) as u32 / 3 * unsafe { FLOORS_CLEARED + 1 };
             let mut cells: Vec<Point> = r.inner_cells().collect();
             cells.shuffle(rng);
             let mut elite = false;
+            let mut temp_counts = HashMap::new();
 
             // Eligible to be an exit room if there is one door to it.
             if !done_exit {
@@ -208,16 +330,26 @@ fn main() {
                 budget = 75;
                 map.insert_tile(
                     get_exit(false, floor_num as usize),
-                    r.top_left() + Point::new(r.wid / 2, -r.hgt / 2),
+                    r.top_left() + Point::new(1, -1),
                 );
             }
 
-            'enemy_gen: while let Some((temp, cost)) = get_temp(budget, rng, elite) {
+            'enemy_gen: while let Some((temp, cost)) = get_temp(budget, rng, elite, &temp_counts) {
                 budget -= cost;
-                // Exit early if there is no where to place the entity.
-                let Some(nx) = cells.pop() else {
-                    break 'enemy_gen;
+                let nx = loop {
+                    // Exit early if there is no where to place the entity.
+                    let Some(nx) = cells.pop() else {
+                        break 'enemy_gen;
+                    };
+
+                    let Some(tl) = grid.get(&nx) else { continue };
+                    match tl {
+                        map_gen::Cell::Ice(_) | map_gen::Cell::Wall(_) => continue,
+                        _ => break nx,
+                    }
                 };
+
+                *temp_counts.entry(*temp.ch.content()).or_insert(0) += 1;
 
                 map.insert_entity(En::from_template(temp, false, true), nx);
             }
@@ -245,6 +377,7 @@ fn main() {
             for x in -(((MAP_WIDTH / 2) + MAP_OFFSET) as i32)..(MAP_WIDTH / 2 + MAP_OFFSET) as i32 {
                 let pos = Point::new(x, y);
                 let mut blocking = false;
+                let mut slippery = false;
                 let mut door = None;
 
                 // If there is already a tile there, don't overwrite it.
@@ -262,10 +395,15 @@ fn main() {
                             blocking = false;
                             None
                         }
+                        map_gen::Cell::Ice(_) => {
+                            blocking = false;
+                            slippery = true;
+                            Some(ICE_CHAR.on(ICE_CLR))
+                        }
                         map_gen::Cell::Door(id1, id2) => {
                             blocking = false;
                             door = Some((rooms[*id1], rooms[*id2]));
-                            Some('/'.yellow())
+                            Some(DOOR_CHAR.with(get_door_clr()))
                         }
                     },
                     None => None,
@@ -284,7 +422,7 @@ fn main() {
                         blocking,
                         empt: false,
                         revealed,
-                        slippery: false,
+                        slippery,
                         door,
                         step_effect: None,
                         locked: None,
@@ -301,26 +439,8 @@ fn main() {
         door.blocking = true;
     };
 
-    gen_floor(&mut map, &mut floor_rng, unsafe { FLOORS_CLEARED });
-
     let mut handle = std::io::stdout();
     execute!(handle, cursor::Hide);
-
-    let mut win_cont = windowed::Container::new();
-    let win_left = TERMINAL_WID / 2 - WINDOW_WIDTH / 2;
-    let win_top = TERMINAL_HGT / 2 - WINDOW_HEIGHT / 2 - 1;
-    win_cont.add_win(windowed::Window::new(Point::new(
-        win_left as i32,
-        win_top as i32,
-    )));
-    win_cont.add_win(windowed::Window::new(STATS_POS));
-    win_cont.add_win(windowed::Window::new(ATKS_POS));
-    win_cont.add_win(windowed::Window::new(KEYS_POS));
-    win_cont.add_win(windowed::Window::new(LOG_POS));
-
-    let delay = std::time::Duration::from_millis(DELAY);
-    let vfx_delay = std::time::Duration::from_millis(VFX_DELAY);
-    let mut ready;
 
     // Colours the text with the given colour and puts it into the window. Ensures at least len styled characters
     // are contained within the line.
@@ -342,8 +462,22 @@ fn main() {
         win.data.push(line);
     };
 
+    // Display the given window container to the screen.
+    let print_win = |win_cont: &windowed::Container<style::StyledContent<char>>| {
+        let mut handle = io::stdout();
+
+        // Print the screen.
+        let screen = win_cont.to_string_with_default(TERMINAL_WID, TERMINAL_HGT - 1, ' '.stylize());
+
+        for (y, line) in screen.lines().enumerate() {
+            queue!(handle, cursor::MoveTo(0, y as u16), style::Print(line));
+        }
+
+        handle.flush();
+    };
+
     // Display the current state of the map into the terminal.
-    let mut display_map =
+    let display_map =
         |map: &bn::Map<En>, win_cont: &mut windowed::Container<style::StyledContent<char>>| {
             let player_pos = unsafe { PLAYER };
             let pl = map.get_ent(player_pos).unwrap();
@@ -443,13 +577,11 @@ fn main() {
                 let keys = unsafe { KEYS_COLLECTED[n] };
                 next_line.push(char::from_digit(keys, 16).unwrap().stylize());
                 next_line.push('x'.stylize());
-                next_line.push(
-                    KEY.with(if keys > 0 {
-                        *clr
-                    } else {
-                        style::Color::DarkGrey
-                    }),
-                );
+                next_line.push(KEY.with(if keys > 0 {
+                    *clr
+                } else {
+                    style::Color::DarkGrey
+                }));
             }
 
             next_line.push(' '.stylize());
@@ -465,11 +597,7 @@ fn main() {
             add_line(style::Color::White, "LOG: ", cur_win, LOG_WID);
             let read = LOG_MSGS.read().unwrap();
             let len = read.len();
-            let start = if len < LOG_HGT {
-                0
-            } else {
-                len - LOG_HGT
-            };
+            let start = if len < LOG_HGT { 0 } else { len - LOG_HGT };
 
             for msg in LOG_MSGS.read().unwrap()[start..len].iter() {
                 add_line(style::Color::White, &msg.to_string(), cur_win, LOG_WID);
@@ -484,104 +612,304 @@ fn main() {
 
             win_cont.refresh();
 
-            // Print the screen.
-            let screen =
-                win_cont.to_string_with_default(TERMINAL_WID, TERMINAL_HGT - 1, ' '.stylize());
-
-            for (y, line) in screen.lines().enumerate() {
-                queue!(handle, cursor::MoveTo(0, y as u16), style::Print(line));
-            }
-
-            handle.flush();
+            print_win(win_cont);
         };
 
-    display_map(&map, &mut win_cont);
+    'full: loop {
+        // Reset globals.
+        unsafe {
+            PLAYER = Point::ORIGIN;
+            GLOBAL_TIME = 0;
 
-    'main: loop {
-        ready = true;
+            // Give a lot of keys on a debug build.
+            let key_count = if cfg!(debug_assertions) { 9 } else { 0 };
+            KEYS_COLLECTED = [key_count; entity::KEY_CLRS_COUNT];
+            LOG_MSGS.write().unwrap().clear();
+            LAST_DOOR.write().unwrap().take();
+            DEAD = false;
+            FLOORS_CLEARED = 0;
+            NEXT_FLOOR = false;
+            ENEMIES_REMAINING = 0;
+            ACTION = ActionType::Wait;
+            KILLED = 0;
+        }
+        let delay = time::Duration::from_millis(DELAY);
+        let vfx_delay = time::Duration::from_millis(VFX_DELAY);
+        let mut ready;
 
-        if map.get_ent(unsafe { PLAYER }).unwrap().vel.is_none() {
-            while let event::Event::Key(ke) = event::read().expect("what") {
-                if ke.is_press() {
-                    let action = match ke.code {
-                        // Has arrow keys, wasd, and, for the vim users among us, hjkl.
-                        event::KeyCode::Left
-                        | event::KeyCode::Char('a')
-                        | event::KeyCode::Char('h') => ActionType::TryMove(Point::new(-1, 0)),
-                        event::KeyCode::Right
-                        | event::KeyCode::Char('d')
-                        | event::KeyCode::Char('l') => ActionType::TryMove(Point::new(1, 0)),
-                        event::KeyCode::Down
-                        | event::KeyCode::Char('s')
-                        | event::KeyCode::Char('j') => ActionType::TryMove(Point::new(0, -1)),
-                        event::KeyCode::Up
-                        | event::KeyCode::Char('w')
-                        | event::KeyCode::Char('k') => ActionType::TryMove(Point::new(0, 1)),
-                        event::KeyCode::Char('.') => ActionType::Wait,
-                        event::KeyCode::Char('f') => ActionType::Fire(0),
-                        event::KeyCode::Char('g') => ActionType::Fire(1),
-                        event::KeyCode::Char('b') => ActionType::Fire(2),
-                        event::KeyCode::Enter => break 'main,
-                        _ => continue,
-                    };
+        // Main menu here.
+        let mut main_menu_cont: windowed::Container<style::StyledContent<char>> =
+            windowed::Container::new();
 
-                    unsafe {
-                        ACTION = action;
+        // Title text.
+        main_menu_cont.add_win(windowed::Window::new(Point::new(26, 1)));
+
+        // Open the main menu file.
+        let mut f = fs::File::open("main_menu.txt").unwrap();
+        let mut main_text = String::new();
+        f.read_to_string(&mut main_text);
+
+        for line in main_text.lines() {
+            add_line(
+                style::Color::White,
+                line,
+                &mut main_menu_cont.windows[0],
+                128,
+            );
+            main_menu_cont.refresh();
+            print_win(&main_menu_cont);
+            thread::sleep(delay);
+        }
+
+        clear_events();
+
+        while let event::Event::Key(ke) = event::read().expect("what") {
+            if ke.is_press() {
+                match ke.code {
+                    event::KeyCode::Esc => break 'full,
+                    event::KeyCode::Char(' ') => break,
+                    _ => continue,
+                }
+            }
+        }
+
+        // Time when the game began.
+        let start = time::Instant::now();
+
+        // Create the various windows required for the main game.
+        let mut main_wins = windowed::Container::new();
+        let win_left = TERMINAL_WID / 2 - WINDOW_WIDTH / 2;
+        let win_top = TERMINAL_HGT / 2 - WINDOW_HEIGHT / 2 - 1;
+        main_wins.add_win(windowed::Window::new(Point::new(
+            win_left as i32,
+            win_top as i32,
+        )));
+        main_wins.add_win(windowed::Window::new(STATS_POS));
+        main_wins.add_win(windowed::Window::new(ATKS_POS));
+        main_wins.add_win(windowed::Window::new(KEYS_POS));
+        main_wins.add_win(windowed::Window::new(LOG_POS));
+
+        // Rng used for map generation. Has to be separate to ensure determinism
+        // with the map and its contents.
+        let mut floor_rng = rand::rngs::StdRng::from_os_rng();
+
+        // Map used through the game.
+        let mut map: bn::Map<En> = bn::Map::new(MAP_WIDTH, MAP_HEIGHT);
+
+        // Generate the initial floor.
+        gen_floor(&mut map, &mut floor_rng, unsafe { FLOORS_CLEARED });
+
+        display_map(&map, &mut main_wins);
+
+        'main: loop {
+            ready = true;
+
+            if map.get_ent(unsafe { PLAYER }).unwrap().vel.is_none() {
+                while let event::Event::Key(ke) = event::read().expect("what") {
+                    if ke.is_press() {
+                        let action = match ke.code {
+                            // Has arrow keys, wasd, and, for the vim users among us, hjkl.
+                            event::KeyCode::Left
+                            | event::KeyCode::Char('a')
+                            | event::KeyCode::Char('h') => ActionType::TryMove(Point::new(-1, 0)),
+                            event::KeyCode::Right
+                            | event::KeyCode::Char('d')
+                            | event::KeyCode::Char('l') => ActionType::TryMove(Point::new(1, 0)),
+                            event::KeyCode::Down
+                            | event::KeyCode::Char('s')
+                            | event::KeyCode::Char('j') => ActionType::TryMove(Point::new(0, -1)),
+                            event::KeyCode::Up
+                            | event::KeyCode::Char('w')
+                            | event::KeyCode::Char('k') => ActionType::TryMove(Point::new(0, 1)),
+                            event::KeyCode::Char('.') => ActionType::Wait,
+                            event::KeyCode::Char('f') => ActionType::Fire(0),
+                            event::KeyCode::Char('g') => ActionType::Fire(1),
+                            event::KeyCode::Char('b') => ActionType::Fire(2),
+                            event::KeyCode::Char('n') => {
+                                #[cfg(debug_assertions)]
+                                unsafe {
+                                    NEXT_FLOOR = true;
+                                    if FLOORS_CLEARED + 1 == KILL_SCREEN as u32 {
+                                        break 'main;
+                                    }
+                                }
+                                ActionType::Wait
+                            }
+                            event::KeyCode::Char('r') => {
+                                let read = LAST_DOOR.read().unwrap();
+                                let disp = unsafe {
+                                    let old = PLAYER;
+                                    if ENEMIES_REMAINING == 0 {
+                                        if let Some(p) = *read && p != Point::ORIGIN {
+                                            PLAYER = p;
+                                            p - old
+                                        } else { 
+                                            Point::ORIGIN
+                                        }
+                                    } else {
+                                        Point::ORIGIN
+                                    }
+                                };
+                                ActionType::TryMove(disp)
+                            }
+                            event::KeyCode::Esc => {
+                                unsafe {
+                                    DEAD = true;
+                                }
+                                break 'main;
+                            }
+                            _ => continue,
+                        };
+
+                        unsafe {
+                            ACTION = action;
+                        }
+
+                        break;
+                    }
+                }
+            } else {
+                unsafe {
+                    ACTION = ActionType::Wait;
+                }
+                clear_events();
+            }
+
+            while map
+                .get_highest_priority()
+                .map(|(_k, e)| !e.is_player)
+                .unwrap_or(false)
+                || ready
+            {
+                ready = false;
+                map.update();
+                display_map(&map, &mut main_wins);
+                // thread::sleep(delay);
+                let mut did_vfx = false;
+                while map.update_vfx() > 0 {
+                    did_vfx = true;
+                    display_map(&map, &mut main_wins);
+                    thread::sleep(delay);
+                }
+                display_map(&map, &mut main_wins);
+                if did_vfx {
+                    thread::sleep(vfx_delay);
+                }
+                unsafe {
+                    // Check if the player has died.
+                    if map.get_ent(PLAYER).unwrap().is_dead() {
+                        DEAD = true;
+                        break 'main;
                     }
 
-                    break;
+                    // Check if the player has left the floor.
+                    if NEXT_FLOOR {
+                        FLOORS_CLEARED += 1;
+                        if FLOORS_CLEARED == KILL_SCREEN as u32 {
+                            break 'main;
+                        }
+                        NEXT_FLOOR = false;
+                        gen_floor(&mut map, &mut floor_rng, FLOORS_CLEARED);
+                        display_map(&map, &mut main_wins);
+                    }
                 }
             }
+
+            thread::sleep(delay);
+        }
+        // Death/win screen.
+        let mut end_wins = windowed::Container::new();
+
+        let main_wid = 38;
+        let time_taken = time::Instant::now().duration_since(start).as_secs();
+        let (fname, txt_pos) = if unsafe { DEAD } {
+            ("death.txt", Point::new(3, 2))
         } else {
-            unsafe {
-                ACTION = ActionType::Wait;
-            }
-            clear_events();
+            ("win.txt", Point::new(26, 2))
+        };
+        end_wins.add_win(windowed::Window::new(txt_pos));
+        end_wins.add_win(windowed::Window::new(Point::new(40, 12)));
+
+        // Open the relevant file.
+        let mut f = fs::File::open(fname).unwrap();
+        let mut text = String::new();
+        f.read_to_string(&mut text);
+
+        for line in text.lines() {
+            add_line(style::Color::White, line, &mut end_wins.windows[0], 128);
+            end_wins.refresh();
+            print_win(&end_wins);
+            thread::sleep(delay);
         }
 
-        while map
-            .get_highest_priority()
-            .map(|(_k, e)| !e.is_player)
-            .unwrap_or(false)
-            || ready
-        {
-            ready = false;
-            map.update();
-            display_map(&map, &mut win_cont);
-            // thread::sleep(delay);
-            let mut did_vfx = false;
-            while map.update_vfx() > 0 {
-                did_vfx = true;
-                display_map(&map, &mut win_cont);
-                thread::sleep(delay);
-            }
-            display_map(&map, &mut win_cont);
-            if did_vfx {
-                thread::sleep(vfx_delay);
-            }
-            unsafe {
-                // Check if the player has died.
-                if map.get_ent(PLAYER).unwrap().is_dead() {
-                    println!("you are dead");
-                    break 'main;
-                }
+        clear_events();
+        let cur_win = &mut end_wins.windows[1];
 
-                // Check if the player has left the floor.
-                if NEXT_FLOOR {
-                    FLOORS_CLEARED += 1;
-                    NEXT_FLOOR = false;
-                    gen_floor(&mut map, &mut floor_rng, FLOORS_CLEARED);
-                    display_map(&map, &mut win_cont);
+        add_line(style::Color::White, "", cur_win, main_wid);
+
+        // Real time taken.
+        add_line(
+            style::Color::White,
+            &format!("Time Elapsed: {}:{:02}", time_taken / 60, time_taken % 60,),
+            cur_win,
+            main_wid,
+        );
+
+        // In game time taken.
+        add_line(
+            style::Color::White,
+            &format!("Turns: {}", unsafe { GLOBAL_TIME },),
+            cur_win,
+            main_wid,
+        );
+
+        // Floor reached.
+        add_line(
+            style::Color::White,
+            &format!("Floor Reached: {}", unsafe { FLOORS_CLEARED },),
+            cur_win,
+            main_wid,
+        );
+
+        // Enemies killed.
+        add_line(
+            style::Color::White,
+            &format!("Enemies Killed: {}", unsafe { KILLED },),
+            cur_win,
+            main_wid,
+        );
+
+        add_line(style::Color::White, "", cur_win, main_wid);
+
+        // Infos.
+        add_line(
+            style::Color::White,
+            "Space for main menu, esc to quit",
+            cur_win,
+            main_wid,
+        );
+
+        add_line(style::Color::White, "", cur_win, main_wid);
+
+        cur_win.outline_with('#'.stylize());
+        thread::sleep(time::Duration::from_millis(275));
+        end_wins.refresh();
+        print_win(&end_wins);
+
+        while let event::Event::Key(ke) = event::read().expect("what") {
+            if ke.is_press() {
+                match ke.code {
+                    event::KeyCode::Esc => break 'full,
+                    event::KeyCode::Char(' ') => break,
+                    _ => continue,
                 }
             }
         }
-
-        thread::sleep(delay);
     }
 }
 
 fn clear_events() {
-    while let Ok(b) = event::poll(std::time::Duration::from_secs(0))
+    while let Ok(b) = event::poll(time::Duration::from_secs(0))
         && b
     {
         event::read();

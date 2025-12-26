@@ -23,12 +23,14 @@ pub enum Effect {
     /// - Where you attack from
     /// - Where you attack
     /// - Map in which the attack takes place
+    ///
+    /// Returns a list of commands to be executed.
     Other(OtherEf),
 }
 
 #[derive(Clone, Debug)]
 pub struct MeleeAtk {
-    /// Damage dealt.
+    /// Effect of the attack. Applied to each postion.
     pub effects: Vec<Effect>,
     /// Where it affects relative to some position.
     pub place: Vec<Point>,

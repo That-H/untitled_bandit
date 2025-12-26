@@ -46,14 +46,15 @@ Various windows will be displayed on this terminal window during gameplay, which
 
 ### Controls
 
-Movement can be achieved using any of the following key sets (choose whichever you are most comfortable
-        with):
+Movement can be achieved using any of the following key sets (choose whichever you are most comfortable with):
 
     - wasd
     - arrow keys
     - hjkl 
 
 The player may also choose to do nothing for a turn, which is performed by pressing the period ('.').
+To end the current run, press the escape key.
+To return to the most recently used door, press 'r'. This can only be done when no enemies are on screen.
 
 ## Running The Game
 
