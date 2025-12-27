@@ -1,3 +1,12 @@
+# 0.7.1
+Hotfix allowing the project to be run when downloaded from github.
+
+# 0.7.0
+Adds an anti-softlock mechanism and all previous beta changes.
+
+## New Features
+- Returning to the previous door to prevent softlocks.
+
 # v0.6.3-beta
 Adds ice puzzles, end screens, and a new boss.
 
@@ -7,7 +16,6 @@ Adds ice puzzles, end screens, and a new boss.
 - Win screen
 - Added the omega boss ('Ω') to floor 3.
 - Rooms with more than one door have a 10% chance to become an ice puzzle room.
-- Returning to the previous door to prevent softlocks.
 
 ## Balance Changes
 - The g enemy is too powerful to only appear on floor 2.

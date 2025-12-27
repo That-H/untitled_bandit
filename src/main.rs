@@ -9,7 +9,7 @@ use entity::*;
 use io::{Read, Write};
 use rand::prelude::{IndexedRandom, SliceRandom};
 use rand::{Rng, SeedableRng};
-use std::{collections::HashMap, fs, io, thread, time};
+use std::{collections::HashMap, fs, io, thread, time, path, env};
 use untitled_bandit::*;
 
 const ROOMS: u32 = 10;
@@ -123,6 +123,14 @@ struct TempMeta {
 }
 
 fn main() {
+    // Get the path to this executable so that assets can be loaded even if the project is
+    // downloaded from github.
+    let mut this_path = env::current_exe().expect("Failed to get path to project");
+    for _ in 0..3 {
+        this_path.pop();
+    }
+    this_path.push("src");
+
     // Raw mode required for windowed to work correctly.
     terminal::enable_raw_mode();
     execute!(io::stdout(), terminal::Clear(terminal::ClearType::All));
@@ -645,7 +653,7 @@ fn main() {
         main_menu_cont.add_win(windowed::Window::new(Point::new(26, 1)));
 
         // Open the main menu file.
-        let mut f = fs::File::open("main_menu.txt").unwrap();
+        let mut f = fs::File::open(this_path.join("main_menu.txt")).unwrap();
         let mut main_text = String::new();
         f.read_to_string(&mut main_text);
 
@@ -831,7 +839,7 @@ fn main() {
         end_wins.add_win(windowed::Window::new(Point::new(40, 12)));
 
         // Open the relevant file.
-        let mut f = fs::File::open(fname).unwrap();
+        let mut f = fs::File::open(this_path.join(fname)).unwrap();
         let mut text = String::new();
         f.read_to_string(&mut text);
 

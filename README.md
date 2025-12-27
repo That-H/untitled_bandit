@@ -58,7 +58,8 @@ To return to the most recently used door, press 'r'. This can only be done when 
 
 ## Running The Game
 
-The github repository contains, in the target/release/ folder, an optimised executable file that runs the game.
+The github repository contains, in the target/release/ folder, an optimised executable file that runs the game. It requires some assets located
+in src, so it is recommended to download the entire project as a zip file and directly run it from there.
 Alternatively, you can build the game from the source code and run the resulting binary. See [Building From Source](#Building-From-Source)
 
 ## Dependencies
