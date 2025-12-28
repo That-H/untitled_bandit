@@ -104,7 +104,7 @@ pub fn ice_rect<R: Rng>(
     rng: &mut R,
     id: usize,
     wall_freq: f64,
-    min_path_len: u16
+    min_path_len: u16,
 ) {
     let rect = rects[id];
     let mut tiles = HashMap::new();
@@ -117,7 +117,7 @@ pub fn ice_rect<R: Rng>(
             doors.push(p);
         }
     }
-    
+
     if doors.len() <= 1 {
         return;
     }
@@ -160,11 +160,13 @@ pub fn ice_rect<R: Rng>(
                 adj.push(loop {
                     let nx = cur + dir;
                     let tile = tiles.get(&nx);
-                    if doors.contains(&nx)  {
+                    if doors.contains(&nx) {
                         break nx;
                     } else if tile.is_none() {
                         break cur;
-                    } else if let Some(b) = tile && *b {
+                    } else if let Some(b) = tile
+                        && *b
+                    {
                         break cur;
                     } else {
                         cur = nx;
@@ -207,7 +209,10 @@ pub fn ice_rect<R: Rng>(
                     }
 
                     for nbr in nbrs(pos) {
-                        heap.push(State { pos: nbr, moves: moves + 1 });
+                        heap.push(State {
+                            pos: nbr,
+                            moves: moves + 1,
+                        });
                     }
                 }
             }
@@ -217,13 +222,19 @@ pub fn ice_rect<R: Rng>(
         }
 
         // Being here means the generator has created a valid puzzle.
-        break
+        break;
     }
 
     for (p, t) in tiles {
         let cl = occupied.get_mut(&p).unwrap();
         match cl {
-            Cell::Inner(id) => *cl = if t { Cell::Wall(vec![*id]) } else { Cell::Ice(*id) },
+            Cell::Inner(id) => {
+                *cl = if t {
+                    Cell::Wall(vec![*id])
+                } else {
+                    Cell::Ice(*id)
+                }
+            }
             _ => continue,
         }
     }

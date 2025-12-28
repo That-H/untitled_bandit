@@ -9,8 +9,11 @@ use entity::*;
 use io::{Read, Write};
 use rand::prelude::{IndexedRandom, SliceRandom};
 use rand::{Rng, SeedableRng};
-use std::{collections::HashMap, fs, io, thread, time, path, env};
+use std::{collections::HashMap, env, fs, io, thread, time};
 use untitled_bandit::*;
+
+// Directory of the assets.
+const ASSETS_DIR: &str = "assets";
 
 const ROOMS: u32 = 10;
 const SPECIAL_ROOMS: u32 = 1;
@@ -129,7 +132,7 @@ fn main() {
     for _ in 0..3 {
         this_path.pop();
     }
-    this_path.push("src");
+    this_path.push(ASSETS_DIR);
 
     // Raw mode required for windowed to work correctly.
     terminal::enable_raw_mode();
@@ -288,7 +291,7 @@ fn main() {
         // Reinitialise the map.
         *map = bandit::Map::new(0, 0);
 
-        unsafe { 
+        unsafe {
             PLAYER = Point::ORIGIN;
             LAST_DOOR.write().unwrap().take();
         }
@@ -623,6 +626,9 @@ fn main() {
             print_win(win_cont);
         };
 
+    // True if the main_menu should be skipped.
+    let mut quick_restart = false;
+
     'full: loop {
         // Reset globals.
         unsafe {
@@ -652,34 +658,125 @@ fn main() {
         // Title text.
         main_menu_cont.add_win(windowed::Window::new(Point::new(26, 1)));
 
-        // Open the main menu file.
-        let mut f = fs::File::open(this_path.join("main_menu.txt")).unwrap();
-        let mut main_text = String::new();
-        f.read_to_string(&mut main_text);
+        // Main menu.
+        main_menu_cont.add_win(windowed::Window::new(Point::new(56, 20)));
 
-        for line in main_text.lines() {
-            add_line(
-                style::Color::White,
-                line,
-                &mut main_menu_cont.windows[0],
-                128,
-            );
-            main_menu_cont.refresh();
-            print_win(&main_menu_cont);
-            thread::sleep(delay);
+        // End screen menu.
+        main_menu_cont.add_win(windowed::Window::new(Point::new(53, 20)));
+
+        if !quick_restart {
+            // Open the main menu file.
+            let mut f = fs::File::open(this_path.join("main_menu.txt")).unwrap();
+            let mut main_text = String::new();
+            f.read_to_string(&mut main_text);
+
+            for line in main_text.lines() {
+                add_line(
+                    style::Color::White,
+                    line,
+                    &mut main_menu_cont.windows[0],
+                    128,
+                );
+                main_menu_cont.refresh();
+                print_win(&main_menu_cont);
+                thread::sleep(delay);
+            }
         }
 
         clear_events();
 
-        while let event::Event::Key(ke) = event::read().expect("what") {
-            if ke.is_press() {
-                match ke.code {
-                    event::KeyCode::Esc => break 'full,
-                    event::KeyCode::Char(' ') => break,
-                    _ => continue,
-                }
+        let mut menu_container = ui::UiContainer::new();
+
+        // Main menu.
+        let mut scene = ui::Scene::new();
+
+        scene.add_element(
+            Box::new(ui::widgets::Button::new(
+                String::from("Play"),
+                style::Color::White,
+                style::Color::Yellow,
+                String::from(">"),
+                style::Color::Yellow,
+                ui::Event::Exit(1),
+            )),
+            Point::new(1, 1),
+        );
+        scene.add_element(
+            Box::new(ui::widgets::Button::new(
+                String::from("Quit"),
+                style::Color::White,
+                style::Color::Yellow,
+                String::from(">"),
+                style::Color::Yellow,
+                ui::Event::Exit(0),
+            )),
+            Point::new(1, 2),
+        );
+        scene.add_element(
+            Box::new(ui::widgets::Outline::new(
+                '#'.grey(),
+                8
+            )),
+            Point::new(999, 999),
+        );
+        scene.move_cursor(Point::new(1, 1));
+        menu_container.add_scene(scene);
+
+        // Death / win_screen.
+        let mut end_scene = ui::Scene::new();
+
+        end_scene.add_element(
+            Box::new(ui::widgets::Button::new(
+                String::from("New Run"),
+                style::Color::White,
+                style::Color::Yellow,
+                String::from(">"),
+                style::Color::Yellow,
+                ui::Event::Exit(2),
+            )),
+            Point::new(1, 1),
+        );
+        end_scene.add_element(
+            Box::new(ui::widgets::Button::new(
+                String::from("Main Menu"),
+                style::Color::White,
+                style::Color::Yellow,
+                String::from(">"),
+                style::Color::Yellow,
+                ui::Event::Exit(1),
+            )),
+            Point::new(1, 2),
+        );
+        end_scene.add_element(
+            Box::new(ui::widgets::Button::new(
+                String::from("Quit"),
+                style::Color::White,
+                style::Color::Yellow,
+                String::from(">"),
+                style::Color::Yellow,
+                ui::Event::Exit(0),
+            )),
+            Point::new(1, 3),
+        );
+        end_scene.add_element(
+            Box::new(ui::widgets::Outline::new(
+                '#'.grey(),
+                14
+            )),
+            Point::new(999, 999),
+        );
+        end_scene.move_cursor(Point::new(1, 1));
+
+        menu_container.add_scene(end_scene);
+
+        if !quick_restart {
+            match menu_container.run(&mut main_menu_cont.windows[1], 8, 4) {
+                0 => break 'full,
+                1 => (),
+                c => panic!("Unexpected code '{c}'"),
             }
         }
+        quick_restart = false;
 
         // Time when the game began.
         let start = time::Instant::now();
@@ -748,10 +845,12 @@ fn main() {
                                 let disp = unsafe {
                                     let old = PLAYER;
                                     if ENEMIES_REMAINING == 0 {
-                                        if let Some(p) = *read && p != Point::ORIGIN {
+                                        if let Some(p) = *read
+                                            && p != Point::ORIGIN
+                                        {
                                             PLAYER = p;
                                             p - old
-                                        } else { 
+                                        } else {
                                             Point::ORIGIN
                                         }
                                     } else {
@@ -889,29 +988,17 @@ fn main() {
 
         add_line(style::Color::White, "", cur_win, main_wid);
 
-        // Infos.
-        add_line(
-            style::Color::White,
-            "Space for main menu, esc to quit",
-            cur_win,
-            main_wid,
-        );
-
-        add_line(style::Color::White, "", cur_win, main_wid);
-
         cur_win.outline_with('#'.stylize());
         thread::sleep(time::Duration::from_millis(275));
         end_wins.refresh();
         print_win(&end_wins);
 
-        while let event::Event::Key(ke) = event::read().expect("what") {
-            if ke.is_press() {
-                match ke.code {
-                    event::KeyCode::Esc => break 'full,
-                    event::KeyCode::Char(' ') => break,
-                    _ => continue,
-                }
-            }
+        menu_container.change_scene(1);
+        match menu_container.run(&mut main_menu_cont.windows[2], 14, 5) {
+            0 => break 'full,
+            1 => (),
+            2 => quick_restart = true,
+            c => panic!("Unexpected code '{c}'"),
         }
     }
 }

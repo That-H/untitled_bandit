@@ -619,7 +619,9 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                         }))),
                         Box::new(ActionType::Arbitrary(Box::new(|map, _en, pos| {
                             let mut cmds = pl_to_wall(map, Point::new(0, 1));
-                            cmds.push(bn::Cmd::new_on(pos).create_effect(Vfx::new_opaque('Ω'.white(), 9)));
+                            cmds.push(
+                                bn::Cmd::new_on(pos).create_effect(Vfx::new_opaque('Ω'.white(), 9)),
+                            );
                             cmds
                         }))),
                     ),
@@ -629,7 +631,9 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                         }))),
                         Box::new(ActionType::Arbitrary(Box::new(|map, _en, pos| {
                             let mut cmds = pl_to_wall(map, Point::new(-1, 0));
-                            cmds.push(bn::Cmd::new_on(pos).create_effect(Vfx::new_opaque('Ω'.white(), 9)));
+                            cmds.push(
+                                bn::Cmd::new_on(pos).create_effect(Vfx::new_opaque('Ω'.white(), 9)),
+                            );
                             cmds
                         }))),
                     ),
@@ -639,7 +643,9 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                         }))),
                         Box::new(ActionType::Arbitrary(Box::new(|map, _en, pos| {
                             let mut cmds = pl_to_wall(map, Point::new(0, -1));
-                            cmds.push(bn::Cmd::new_on(pos).create_effect(Vfx::new_opaque('Ω'.white(), 9)));
+                            cmds.push(
+                                bn::Cmd::new_on(pos).create_effect(Vfx::new_opaque('Ω'.white(), 9)),
+                            );
                             cmds
                         }))),
                     ),

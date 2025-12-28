@@ -559,7 +559,9 @@ impl bn::Entity for En {
                             let mut should_write = true;
 
                             // If we just saw this door, don't write it again.
-                            if let Some(dr) = *write && dr != pos {
+                            if let Some(dr) = *write
+                                && dr != pos
+                            {
                                 // Check if the sentinel value is present. If it is, then we must
                                 // be reverting to the previous door, so remove the sentinel and
                                 // don't write the current position.
@@ -567,7 +569,7 @@ impl bn::Entity for En {
                                     write.take();
                                     should_write = false;
                                 }
-                            } 
+                            }
 
                             if should_write {
                                 write.replace(pos);
