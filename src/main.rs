@@ -15,6 +15,11 @@ use untitled_bandit::*;
 // Directory of the assets.
 const ASSETS_DIR: &str = "assets";
 
+// UI constants.
+const SELECTOR: &str = ">";
+const SELECTOR_CLR: style::Color = style::Color::Rgb { r: 255, g: 190, b: 0 };
+const HOVER_CLR: style::Color = SELECTOR_CLR;
+
 const ROOMS: u32 = 10;
 const SPECIAL_ROOMS: u32 = 1;
 const MAX_WIDTH: i32 = 13;
@@ -658,12 +663,6 @@ fn main() {
         // Title text.
         main_menu_cont.add_win(windowed::Window::new(Point::new(26, 1)));
 
-        // Main menu.
-        main_menu_cont.add_win(windowed::Window::new(Point::new(56, 20)));
-
-        // End screen menu.
-        main_menu_cont.add_win(windowed::Window::new(Point::new(53, 20)));
-
         if !quick_restart {
             // Open the main menu file.
             let mut f = fs::File::open(this_path.join("main_menu.txt")).unwrap();
@@ -688,28 +687,28 @@ fn main() {
         let mut menu_container = ui::UiContainer::new();
 
         // Main menu.
-        let mut scene = ui::Scene::new();
+        let mut scene = ui::Scene::new(Point::new(56, 20), 8, 4);
+
+        let basic_button = ui::widgets::Button::empty_new()
+            .set_selector(String::from(SELECTOR))
+            .set_hover_clr(HOVER_CLR)
+            .set_selector_clr(SELECTOR_CLR)
+            .set_static_len(true);
 
         scene.add_element(
-            Box::new(ui::widgets::Button::new(
-                String::from("Play"),
-                style::Color::White,
-                style::Color::Yellow,
-                String::from(">"),
-                style::Color::Yellow,
-                ui::Event::Exit(1),
-            )),
+            Box::new(basic_button.clone()
+                .set_txt(String::from("Play"))
+                .set_event(ui::Event::Exit(1))
+                .set_screen_pos(Point::new(1, 1))
+            ),
             Point::new(1, 1),
         );
         scene.add_element(
-            Box::new(ui::widgets::Button::new(
-                String::from("Quit"),
-                style::Color::White,
-                style::Color::Yellow,
-                String::from(">"),
-                style::Color::Yellow,
-                ui::Event::Exit(0),
-            )),
+            Box::new(basic_button.clone()
+                .set_txt(String::from("Quit"))
+                .set_event(ui::Event::Exit(0))
+                .set_screen_pos(Point::new(1, 2))
+            ),
             Point::new(1, 2),
         );
         scene.add_element(
@@ -723,45 +722,36 @@ fn main() {
         menu_container.add_scene(scene);
 
         // Death / win_screen.
-        let mut end_scene = ui::Scene::new();
+        let mut end_scene = ui::Scene::new(Point::new(54, 20), 12, 5);
 
         end_scene.add_element(
-            Box::new(ui::widgets::Button::new(
-                String::from("New Run"),
-                style::Color::White,
-                style::Color::Yellow,
-                String::from(">"),
-                style::Color::Yellow,
-                ui::Event::Exit(2),
-            )),
+            Box::new(basic_button.clone()
+                .set_txt(String::from("New run"))
+                .set_event(ui::Event::Exit(2))
+                .set_screen_pos(Point::new(1, 1))
+            ),
             Point::new(1, 1),
         );
         end_scene.add_element(
-            Box::new(ui::widgets::Button::new(
-                String::from("Main Menu"),
-                style::Color::White,
-                style::Color::Yellow,
-                String::from(">"),
-                style::Color::Yellow,
-                ui::Event::Exit(1),
-            )),
+            Box::new(basic_button.clone()
+                .set_txt(String::from("Main Menu"))
+                .set_event(ui::Event::Exit(1))
+                .set_screen_pos(Point::new(1, 2))
+            ),
             Point::new(1, 2),
         );
         end_scene.add_element(
-            Box::new(ui::widgets::Button::new(
-                String::from("Quit"),
-                style::Color::White,
-                style::Color::Yellow,
-                String::from(">"),
-                style::Color::Yellow,
-                ui::Event::Exit(0),
-            )),
+            Box::new(basic_button.clone()
+                .set_txt(String::from("Quit"))
+                .set_event(ui::Event::Exit(0))
+                .set_screen_pos(Point::new(1, 3))
+            ),
             Point::new(1, 3),
         );
         end_scene.add_element(
             Box::new(ui::widgets::Outline::new(
                 '#'.grey(),
-                14
+                12
             )),
             Point::new(999, 999),
         );
@@ -770,7 +760,7 @@ fn main() {
         menu_container.add_scene(end_scene);
 
         if !quick_restart {
-            match menu_container.run(&mut main_menu_cont.windows[1], 8, 4) {
+            match menu_container.run() {
                 0 => break 'full,
                 1 => (),
                 c => panic!("Unexpected code '{c}'"),
@@ -994,7 +984,7 @@ fn main() {
         print_win(&end_wins);
 
         menu_container.change_scene(1);
-        match menu_container.run(&mut main_menu_cont.windows[2], 14, 5) {
+        match menu_container.run() {
             0 => break 'full,
             1 => (),
             2 => quick_restart = true,

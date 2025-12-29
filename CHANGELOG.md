@@ -1,3 +1,9 @@
+# 0.7.2-alpha
+Minor UI changes.
+
+## New Features
+- Menus with options that can be navigated between via arrow keys.
+
 # 0.7.1
 Hotfix allowing the project to be run when downloaded from github.
 

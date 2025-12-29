@@ -1,3 +1,5 @@
+//! Contains a simple UI framework.
+
 use crate::Point;
 use crate::bn;
 use bn::windowed;
@@ -12,8 +14,8 @@ pub mod widgets;
 
 /// Types that can be used as widgets in a UI window.
 pub trait UiElement {
-    /// Display the current element into the window, given its position.
-    fn display_into(&self, win: &mut windowed::Window<StyleCh>, pos: Point);
+    /// Display the current element into the window.
+    fn display_into(&self, win: &mut windowed::Window<StyleCh>);
 
     /// Toggle whether this element is being hovered over.
     fn toggle_hover(&mut self);
@@ -46,19 +48,26 @@ pub enum Event {
 pub struct Scene {
     elements: HashMap<Point, Box<dyn UiElement>>,
     cursor: Point,
+    win: windowed::Window<StyleCh>,
+    wid: usize,
+    hgt: usize,
 }
 
 impl Scene {
     /// Create an empty scene.
-    pub fn new() -> Self {
+    pub fn new(top_left: Point, wid: usize, hgt: usize) -> Self {
         Self {
             elements: HashMap::new(),
             cursor: Point::ORIGIN,
+            win: windowed::Window::new(top_left),
+            wid,
+            hgt,
         }
     }
 
     /// Add a new element to the container. Automatically hovers it if that is where the cursor
-    /// currently is.
+    /// currently is. Position is purely for navigation; the screen position should be stored
+    /// separately.
     pub fn add_element(&mut self, mut elem: Box<dyn UiElement>, pos: Point) {
         if self.cursor == pos {
             elem.toggle_hover();
@@ -77,6 +86,27 @@ impl Scene {
     /// Displace the cursor by the given vector if there is an element at the new position.
     pub fn disp_cursor(&mut self, disp: Point) {
         self.move_cursor(self.cursor + disp);
+    }
+
+    /// Draw the UI elements into the window.
+    pub fn draw(&mut self) {
+        self.win.data.clear();
+
+        for _ in 0..self.hgt {
+            self.win.data.push(vec![' '.stylize(); self.wid]);
+        }
+
+        let mut elems = Vec::new();
+
+        for elem in self.elements.values() {
+            elems.push(elem);
+        }
+
+        elems.sort_by_key(|e| e.priority());
+
+        for elem in elems {
+            elem.display_into(&mut self.win);
+        }
     }
 
     /// Toggle the hover state of the element at the given position if there is one. Returns true
@@ -127,43 +157,23 @@ impl UiContainer {
         &mut self.scenes[self.cur]
     }
 
-    /// Display the UI elements into the provided window.
-    pub fn display_into(&self, win: &mut windowed::Window<StyleCh>, wid: usize, hgt: usize) {
-        win.data.clear();
-
-        for _ in 0..hgt {
-            win.data.push(vec![' '.stylize(); wid]);
-        }
-
-        let mut elems = Vec::new();
-
-        for (&pos, elem) in self.cur_scene().elements.iter() {
-            elems.push((pos, elem));
-        }
-
-        elems.sort_by_key(|(_p, e)| e.priority());
-
-        for (pos, elem) in elems {
-            elem.display_into(win, pos);
-        }
-    }
-
     /// Change the currently used scene to the one at the provided index.
     pub fn change_scene(&mut self, new_idx: usize) {
         self.cur = new_idx;
     }
 
-    /// Start displaying the UI elements into the given window. Updates this window every key
+    /// Start displaying the UI elements into the current scene. Updates this window every key
     /// press. Exits with a user defined code when an element causes this to happen.
-    pub fn run(&mut self, win: &mut windowed::Window<StyleCh>, wid: usize, hgt: usize) -> u32 {
+    pub fn run(&mut self) -> u32 {
         let mut handle = io::stdout();
 
         'full: loop {
-            self.display_into(win, wid, hgt);
+            let scene = self.cur_scene_mut();
+            scene.draw();
 
-            for (y, row) in win.data.iter().enumerate() {
+            for (y, row) in scene.win.data.iter().enumerate() {
                 for (x, &ch) in row.iter().enumerate() {
-                    let p = Point::new(x as i32, y as i32) + win.top_left;
+                    let p = Point::new(x as i32, y as i32) + scene.win.top_left;
                     let _ = queue!(
                         handle,
                         cursor::MoveTo(p.x as u16, p.y as u16),
@@ -194,7 +204,6 @@ impl UiContainer {
                         _ => Nav::Null,
                     };
 
-                    let scene = self.cur_scene_mut();
                     match action {
                         Nav::Move(p) => {
                             scene.disp_cursor(p);
