@@ -228,11 +228,12 @@ pub fn ice_rect<R: Rng>(
     for (p, t) in tiles {
         let cl = occupied.get_mut(&p).unwrap();
         match cl {
-            Cell::Inner(id) => {
+            Cell::Inner(cell_id) => {
                 *cl = if t {
-                    Cell::Wall(vec![*id])
+                    // Have to use a sentinel value to prevent rooms from generating along it.
+                    Cell::Wall(vec![65536])
                 } else {
-                    Cell::Ice(*id)
+                    Cell::Ice(*cell_id)
                 }
             }
             _ => continue,
@@ -311,7 +312,18 @@ pub fn gen_rect_in<R: Rng>(
                 *allowed = match occupied.get(&(init_pos + *dir)) {
                     Some(c) => match c {
                         Cell::Wall(ids) => {
-                            ids.iter().filter(|id| !exempt.contains(id)).count() <= 1
+                            let mut count = 0;
+                            for id in ids {
+                                if !exempt.contains(id) {
+                                    count += 1;
+                                } 
+                                if *id == 65536 {
+                                    count += 2;
+                                    break;
+                                }
+                            }
+
+                            count <= 1
                         }
                         _ => false,
                     },

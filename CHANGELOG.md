@@ -1,3 +1,12 @@
+# 0.7.2-alpha2
+Adds some developer cheats and a bug fix.
+
+## New Features
+- Added a kill everyone cheat.
+
+## Bug Fixes
+- Fixed a regression making the key room occasionally overlap with an ice puzzle and cause the overlap section to be entirely doors.
+
 # 0.7.2-alpha
 Minor UI changes.
 

@@ -17,8 +17,8 @@ const ASSETS_DIR: &str = "assets";
 
 // UI constants.
 const SELECTOR: &str = ">";
-const SELECTOR_CLR: style::Color = style::Color::Rgb { r: 255, g: 190, b: 0 };
-const HOVER_CLR: style::Color = SELECTOR_CLR;
+const SELECTOR_CLR: style::Color = style::Color::Rgb { r: 255, g: 240, b: 0 };
+const HOVER_CLR: style::Color = style::Color::Rgb { r: 255, g: 240, b: 0 };
 
 const ROOMS: u32 = 10;
 const SPECIAL_ROOMS: u32 = 1;
@@ -49,8 +49,31 @@ const KEYS_POS: Point = Point::new(83, 4);
 const KEYS_WID: usize = KEY_CLRS.len() * 4 + 1;
 const LOG: usize = 4;
 const LOG_POS: Point = Point::new(83, 10);
-const LOG_WID: usize = 27;
+const LOG_WID: usize = 29;
 const LOG_HGT: usize = 11;
+const DEBUG_WIN: usize = 5;
+const DEBUG_POS: Point = Point::new(19, 19);
+const DEBUG_WID: usize = 18;
+const SEED_WIN: usize = 6;
+const SEED_POS: Point = Point::new(21, 19);
+const SEED_WID: usize = 16;
+
+// Events for the ui.
+const QUIT: u32 = 0;
+const MAIN_MENU: u32 = 1;
+const QUICK_RESET: u32 = 2;
+const PLAY: u32 = 3;
+
+// Seed.
+static mut SEED: u32 = 0x2D;
+
+// Whether cheats are enabled. Only possible in a debug build.
+const CHEATS: bool = if cfg!(debug_assertions) { true } else { false };
+// Whether this here initial seed should be ignored.
+const SEED_OVERRIDE: bool = !CHEATS;
+
+// True if the map should be generated with bonus ice.
+const EXTRA_ICE: bool = false;
 
 type StepEffect = dyn Fn(Point, &bn::Map<En>) -> Vec<bn::Cmd<En>>;
 
@@ -138,6 +161,10 @@ fn main() {
         this_path.pop();
     }
     this_path.push(ASSETS_DIR);
+
+    // Rng used for map generation. Has to be separate to ensure determinism
+    // with the map and its contents.
+    let mut floor_rng; 
 
     // Raw mode required for windowed to work correctly.
     terminal::enable_raw_mode();
@@ -254,7 +281,7 @@ fn main() {
     ]);
 
     let get_temp = |budget: u32,
-                    rng: &mut rand::rngs::StdRng,
+                    rng: &mut rand::rngs::SmallRng,
                     elite: bool,
                     temp_counts: &HashMap<char, u32>|
      -> Option<(&EntityTemplate, u32)> {
@@ -285,7 +312,7 @@ fn main() {
         possible.choose(rng).cloned()
     };
 
-    let gen_floor = |map: &mut bandit::Map<En>, rng: &mut rand::rngs::StdRng, floor_num: u32| {
+    let gen_floor = |map: &mut bandit::Map<En>, rng: &mut rand::rngs::SmallRng, floor_num: u32| {
         // Create the player if it is the first floor, otherwise get them.
         let pl = if floor_num == 0 {
             templates::get_player()
@@ -302,7 +329,7 @@ fn main() {
         }
         map.insert_entity(pl, unsafe { PLAYER });
 
-        let ice_prevalence = if cfg!(debug_assertions) { 1.0 } else { 0.1 };
+        let ice_prevalence = if EXTRA_ICE { 1.0 } else { 0.15 };
         // Generate the rooms of the map.
         let (mut grid, mut rooms) = map_gen::map_gen(
             ROOMS - SPECIAL_ROOMS + floor_num * 3,
@@ -480,7 +507,7 @@ fn main() {
 
     // Display the given window container to the screen.
     let print_win = |win_cont: &windowed::Container<style::StyledContent<char>>| {
-        let mut handle = io::stdout();
+        let mut handle= io::stdout();
 
         // Print the screen.
         let screen = win_cont.to_string_with_default(TERMINAL_WID, TERMINAL_HGT - 1, ' '.stylize());
@@ -626,9 +653,34 @@ fn main() {
             cur_win.data.push(vec![' '.stylize(); LOG_WID]);
             cur_win.outline_with('#'.grey());
 
+            if cfg!(debug_assertions) {
+                // Display some debug information.
+                cur_win = &mut win_cont.windows[DEBUG_WIN];
+                cur_win.data.clear();
+                cur_win.data.push(vec![' '.stylize(); DEBUG_WID]);
+
+                let cur_seed = unsafe { SEED };
+                add_line(style::Color::White, &format!("SEED: {cur_seed:X}"), cur_win, DEBUG_WID);
+                add_line(style::Color::White, &format!("Enemies: {}", unsafe { ENEMIES_REMAINING }), cur_win, DEBUG_WID);
+
+                cur_win.data.push(vec![' '.stylize(); DEBUG_WID]);
+
+                cur_win.outline_with('#'.grey());
+            } else {
+                // Display just the seed.
+                cur_win = &mut win_cont.windows[SEED_WIN];
+                cur_win.data.clear();
+
+                let cur_seed = unsafe { SEED };
+                add_line(style::Color::White, &format!("Seed: {cur_seed:X}"), cur_win, SEED_WID);
+
+                cur_win.outline_with('#'.grey());
+            }
+
             win_cont.refresh();
 
             print_win(win_cont);
+                
         };
 
     // True if the main_menu should be skipped.
@@ -641,7 +693,7 @@ fn main() {
             GLOBAL_TIME = 0;
 
             // Give a lot of keys on a debug build.
-            let key_count = if cfg!(debug_assertions) { 9 } else { 0 };
+            let key_count = if CHEATS { 9 } else { 0 };
             KEYS_COLLECTED = [key_count; entity::KEY_CLRS_COUNT];
             LOG_MSGS.write().unwrap().clear();
             LAST_DOOR.write().unwrap().take();
@@ -651,6 +703,11 @@ fn main() {
             ENEMIES_REMAINING = 0;
             ACTION = ActionType::Wait;
             KILLED = 0;
+            // Reseed the rng if we want to override the original one.
+            if SEED_OVERRIDE {
+                SEED = rand::rng().random();
+            }
+            floor_rng = rand::rngs::SmallRng::seed_from_u64(SEED as u64);
         }
         let delay = time::Duration::from_millis(DELAY);
         let vfx_delay = time::Duration::from_millis(VFX_DELAY);
@@ -698,7 +755,7 @@ fn main() {
         scene.add_element(
             Box::new(basic_button.clone()
                 .set_txt(String::from("Play"))
-                .set_event(ui::Event::Exit(1))
+                .set_event(ui::Event::Exit(PLAY))
                 .set_screen_pos(Point::new(1, 1))
             ),
             Point::new(1, 1),
@@ -706,7 +763,7 @@ fn main() {
         scene.add_element(
             Box::new(basic_button.clone()
                 .set_txt(String::from("Quit"))
-                .set_event(ui::Event::Exit(0))
+                .set_event(ui::Event::Exit(QUIT))
                 .set_screen_pos(Point::new(1, 2))
             ),
             Point::new(1, 2),
@@ -727,7 +784,7 @@ fn main() {
         end_scene.add_element(
             Box::new(basic_button.clone()
                 .set_txt(String::from("New run"))
-                .set_event(ui::Event::Exit(2))
+                .set_event(ui::Event::Exit(QUICK_RESET))
                 .set_screen_pos(Point::new(1, 1))
             ),
             Point::new(1, 1),
@@ -735,7 +792,7 @@ fn main() {
         end_scene.add_element(
             Box::new(basic_button.clone()
                 .set_txt(String::from("Main Menu"))
-                .set_event(ui::Event::Exit(1))
+                .set_event(ui::Event::Exit(MAIN_MENU))
                 .set_screen_pos(Point::new(1, 2))
             ),
             Point::new(1, 2),
@@ -743,7 +800,7 @@ fn main() {
         end_scene.add_element(
             Box::new(basic_button.clone()
                 .set_txt(String::from("Quit"))
-                .set_event(ui::Event::Exit(0))
+                .set_event(ui::Event::Exit(QUIT))
                 .set_screen_pos(Point::new(1, 3))
             ),
             Point::new(1, 3),
@@ -761,8 +818,8 @@ fn main() {
 
         if !quick_restart {
             match menu_container.run() {
-                0 => break 'full,
-                1 => (),
+                QUIT => break 'full,
+                PLAY => (),
                 c => panic!("Unexpected code '{c}'"),
             }
         }
@@ -783,10 +840,8 @@ fn main() {
         main_wins.add_win(windowed::Window::new(ATKS_POS));
         main_wins.add_win(windowed::Window::new(KEYS_POS));
         main_wins.add_win(windowed::Window::new(LOG_POS));
-
-        // Rng used for map generation. Has to be separate to ensure determinism
-        // with the map and its contents.
-        let mut floor_rng = rand::rngs::StdRng::from_os_rng();
+        main_wins.add_win(windowed::Window::new(DEBUG_POS));
+        main_wins.add_win(windowed::Window::new(SEED_POS));
 
         // Map used through the game.
         let mut map: bn::Map<En> = bn::Map::new(MAP_WIDTH, MAP_HEIGHT);
@@ -820,12 +875,79 @@ fn main() {
                             event::KeyCode::Char('f') => ActionType::Fire(0),
                             event::KeyCode::Char('g') => ActionType::Fire(1),
                             event::KeyCode::Char('b') => ActionType::Fire(2),
+                            #[cfg(debug_assertions)]
+                            event::KeyCode::Char('v') => {
+                                let mut sd = 46;
+                                loop {
+                                    floor_rng = rand::rngs::SmallRng::seed_from_u64(sd);
+                                    gen_floor(&mut map, &mut floor_rng, 0);
+                                    let test = |t: Option<&Tile>| {
+                                        if let Some(t) = t && t.door.is_some() {
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    };
+                                    for y in -70..=70 {
+                                        for x in -70..=70 {
+                                            let pr = Point::new(x, y);
+                                            let ps = [pr, Point::new(x-1, y), Point::new(x, y-1)];
+                                            if ps.into_iter().all(|p| test(map.get_map(p))) {
+                                                eprintln!("{sd:X} is sus as hell at {pr}");
+                                            }
+                                        }
+                                    }
+                                    sd += 1;
+                                }
+                            }
+                            // Skip to next floor.
                             event::KeyCode::Char('n') => {
-                                #[cfg(debug_assertions)]
                                 unsafe {
-                                    NEXT_FLOOR = true;
-                                    if FLOORS_CLEARED + 1 == KILL_SCREEN as u32 {
-                                        break 'main;
+                                    if CHEATS {
+                                        NEXT_FLOOR = true;
+                                        ENEMIES_REMAINING = 0;
+                                        if FLOORS_CLEARED + 1 == KILL_SCREEN as u32 {
+                                            break 'main;
+                                        }
+                                    }
+                                }
+                                ActionType::Wait
+                            }
+                            // Change seed and restart quickly.
+                            event::KeyCode::Char('x') => {
+                                unsafe {
+                                    if CHEATS {
+                                        SEED = rand::rng().random();
+                                        ENEMIES_REMAINING = 0;
+                                        quick_restart = true;
+                                        continue 'full;
+                                    }
+                                }
+                                ActionType::Wait
+                            }
+                            // Kill everyone in the room.
+                            event::KeyCode::Char('*') => {
+                                unsafe {
+                                    if CHEATS { 
+                                        let mut dead = Vec::new();
+
+                                        for (&pos, _en) in map.get_entities() {
+                                            if pos != PLAYER {
+                                                dead.push(pos);
+                                            }
+                                        }
+
+                                        for d in dead {
+                                            let e = map.get_ent_mut(d).unwrap();
+                                            if !e.dormant {
+                                                e.hp.set_to(0);
+                                            }
+                                        }
+
+                                        let mut write = LOG_MSGS.write().unwrap();
+                                        write.push(LogMsg::new(format!("{} inquires about the", templates::PLAYER_CHARACTER)));
+                                        write.push(LogMsg::new(String::from("extended warranty of")));
+                                        write.push(LogMsg::new(String::from("the enemies' vehicles")));
                                     }
                                 }
                                 ActionType::Wait
@@ -985,9 +1107,9 @@ fn main() {
 
         menu_container.change_scene(1);
         match menu_container.run() {
-            0 => break 'full,
-            1 => (),
-            2 => quick_restart = true,
+            QUIT => break 'full,
+            MAIN_MENU => (),
+            QUICK_RESET => quick_restart = true,
             c => panic!("Unexpected code '{c}'"),
         }
     }
