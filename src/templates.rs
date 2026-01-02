@@ -1,3 +1,5 @@
+//! Generates templates for enemies and the player that will be used in the map.
+
 use crate::*;
 use attacks::*;
 use entity::*;

@@ -1,7 +1,11 @@
+//! Contains the generator and supporting code for parts of the map.
+
 use crate::Point;
 use rand::{Rng, prelude::*};
 use rect::Rect;
 use std::collections::HashMap;
+
+pub mod bandit_gen;
 
 /// A singular cell in a map.
 #[derive(Debug)]

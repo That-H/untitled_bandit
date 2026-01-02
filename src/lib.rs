@@ -47,6 +47,8 @@ pub mod templates;
 
 pub mod ui;
 
+pub mod tile_presets;
+
 /// Returns the colour of doors on the current floor.
 pub fn get_door_clr() -> style::Color {
     DOOR_CLRS[unsafe { FLOORS_CLEARED as usize }]

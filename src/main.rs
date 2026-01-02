@@ -7,11 +7,11 @@ use crossterm::style::{self, Stylize};
 use crossterm::{cursor, event, execute, queue, terminal};
 use entity::*;
 use io::{Read, Write};
-use rand::prelude::{IndexedRandom, SliceRandom};
 use rand::{Rng, SeedableRng};
 use std::{collections::HashMap, env, fs, io, thread, time};
 use untitled_bandit::*;
-use templates::metadata::TempMeta;
+use tile_presets::*;
+use map_gen::bandit_gen::*;
 
 // Directory of the assets.
 const ASSETS_DIR: &str = "assets";
@@ -29,20 +29,10 @@ const HOVER_CLR: style::Color = style::Color::Rgb {
     b: 0,
 };
 
-const ROOMS: u32 = 9;
-const SPECIAL_ROOMS: u32 = 2;
-const MAX_WIDTH: i32 = 13;
-const MIN_WIDTH: i32 = 6;
-const MAP_WIDTH: usize = 300;
-const MAP_HEIGHT: usize = 300;
 const TERMINAL_WID: u16 = 120;
 const TERMINAL_HGT: u16 = 30;
 const WINDOW_WIDTH: u16 = 40;
 const WINDOW_HEIGHT: u16 = 20;
-const ARROWS: [char; 4] = ['↓', '←', '↑', '→'];
-// This does look like a key when printed.
-const KEY: char = '⚷';
-const EXIT_CLRS: [style::Color; 4] = KEY_CLRS;
 
 // All constants below describe the index of the window container that
 // the corresponding window is located at, or things about the window.
@@ -80,295 +70,6 @@ static mut SEED: u64 = 0x3213CA29C823B78A;
 const CHEATS: bool = if cfg!(debug_assertions) { true } else { false };
 // Whether this here initial seed should be ignored.
 const SEED_OVERRIDE: bool = !CHEATS;
-
-// True if the map should be generated with bonus ice.
-const EXTRA_ICE: bool = if cfg!(debug_assertions) { true } else { false };
-
-type StepEffect = dyn Fn(Point, &bn::Map<En>) -> Vec<bn::Cmd<En>>;
-
-fn get_temp<'a>(
-    budget: u32,
-    rng: &mut rand::rngs::SmallRng,
-    elite: bool,
-    temp_counts: &HashMap<char, u32>,
-    meta: &HashMap<char, TempMeta>,
-    templates: &'a [EntityTemplate],
-    elites: &'a [EntityTemplate],
-) -> Option<(&'a EntityTemplate, u32)> {
-    let temps = if elite { elites } else { templates };
-    let possible: Vec<_> = temps
-        .iter()
-        .filter_map(|t| {
-            let ch = t.ch.content();
-            let TempMeta {
-                cost,
-                floor_rang: flrs,
-                max,
-            } = &meta[ch];
-            let cost = *cost;
-            if cost <= budget
-                && flrs.contains(&unsafe { FLOORS_CLEARED })
-                && match temp_counts.get(ch) {
-                    Some(c) => c < max,
-                    _ => true,
-                }
-            {
-                Some((t, cost))
-            } else {
-                None
-            }
-        })
-        .collect();
-    possible.choose(rng).cloned()
-}
-
-fn gen_floor(
-    map: &mut bandit::Map<En>,
-    rng: &mut rand::rngs::SmallRng,
-    floor_num: u32,
-    meta: &HashMap<char, TempMeta>,
-    templates: &[EntityTemplate],
-    elites: &[EntityTemplate],
-) {
-    // Create the player if it is the first floor, otherwise get them.
-    let pl = if floor_num == 0 {
-        templates::get_player()
-    } else {
-        map.get_ent(unsafe { PLAYER }).unwrap().clone()
-    };
-
-    // Reinitialise the map.
-    *map = bandit::Map::new(0, 0);
-
-    unsafe {
-        PLAYER = Point::ORIGIN;
-        LAST_DOOR.write().unwrap().take();
-    }
-    map.insert_entity(pl, unsafe { PLAYER });
-
-    let ice_prevalence = if EXTRA_ICE { 1.0 } else { 0.15 };
-    // Generate the rooms of the map.
-    let (mut grid, mut rooms) = map_gen::map_gen(
-        ROOMS - SPECIAL_ROOMS + floor_num * 3,
-        MAX_WIDTH,
-        MIN_WIDTH,
-        rng,
-    );
-
-    // Rect id of the exit room so that the key room does not generate off of it.
-    let exit_id: usize = rooms.len();
-
-    // Generate a new room specifically for the boss.
-    let true_door = map_gen::gen_rect_in(
-        &mut rooms,
-        &mut grid,
-        rng,
-        MIN_WIDTH,
-        MAX_WIDTH,
-        &[0],
-    );
-
-    map.insert_tile(
-        get_exit(false, floor_num as usize),
-        rooms.last().unwrap().top_left() + Point::new(2, -2),
-    );
-
-    // Generate a new room specifically for the key.
-    map_gen::gen_rect_in(
-        &mut rooms,
-        &mut grid,
-        rng,
-        MIN_WIDTH,
-        MAX_WIDTH,
-        &[0, exit_id],
-    );
-
-    // Create some ice puzzles.
-    map_gen::add_ice(
-        &mut rooms,
-        &mut grid,
-        rng,
-        ice_prevalence,
-    );
-
-    // Generate enemies.
-    for (n, r) in rooms.iter().enumerate().skip(1) {
-        let mut budget = (r.wid * r.hgt) as u32 / 3 * unsafe { FLOORS_CLEARED + 1 };
-        let mut cells: Vec<Point> = r.inner_cells().collect();
-        cells.shuffle(rng);
-
-        // Create a boss in the exit room.
-        let elite = n == exit_id;
-
-        // Don't put anyone in my key room!
-        if n == rooms.len() - 1 {
-            continue;
-        }
-
-        let mut temp_counts = HashMap::new();
-
-        if elite {
-            budget = 75;
-        }
-
-        'enemy_gen: while let Some((temp, cost)) =
-            get_temp(budget, rng, elite, &temp_counts, meta, templates, elites)
-        {
-            budget -= cost;
-            let nx = loop {
-                // Exit early if there is no where to place the entity.
-                let Some(nx) = cells.pop() else {
-                    break 'enemy_gen;
-                };
-
-                let Some(tl) = grid.get(&nx) else { continue };
-                match tl {
-                    map_gen::Cell::Ice(_) | map_gen::Cell::Wall(_) => continue,
-                    _ => break nx,
-                }
-            };
-
-            *temp_counts.entry(*temp.ch.content()).or_insert(0) += 1;
-
-            map.insert_entity(En::from_template(temp, false, true), nx);
-        }
-    }
-
-    let rm = rooms.last().unwrap();
-    let key_pos = rm.top_left() + Point::new(rm.wid / 2, -rm.hgt / 2);
-
-    // Put the cells actually into the map.
-    for y in -(((MAP_HEIGHT / 2) + MAP_OFFSET) as i32)..(MAP_HEIGHT / 2 + MAP_OFFSET) as i32 {
-        for x in -(((MAP_WIDTH / 2) + MAP_OFFSET) as i32)..(MAP_WIDTH / 2 + MAP_OFFSET) as i32 {
-            let pos = Point::new(x, y);
-            let mut blocking = false;
-            let mut slippery = false;
-            let mut door = None;
-
-            // If there is already a tile there, don't overwrite it.
-            if map.get_map(pos).is_some() {
-                continue;
-            };
-
-            let ch = match grid.get(&pos) {
-                Some(cl) => match cl {
-                    map_gen::Cell::Wall(_) => {
-                        blocking = true;
-                        None
-                    }
-                    map_gen::Cell::Inner(_) => {
-                        blocking = false;
-                        None
-                    }
-                    map_gen::Cell::Ice(_) => {
-                        blocking = false;
-                        slippery = true;
-                        Some(ICE_CHAR.on(ICE_CLR))
-                    }
-                    map_gen::Cell::Door(id1, id2) => {
-                        blocking = false;
-                        door = Some((rooms[*id1], rooms[*id2]));
-                        Some(DOOR_CHAR.with(get_door_clr()))
-                    }
-                },
-                None => None,
-            };
-            let revealed = rooms[0].contains(Point::new(x, y));
-            let t = if rng.random_bool(0.0) && !blocking && door.is_none() {
-                create_conveyor(
-                    *Point::ORIGIN.get_all_adjacent().choose(rng).unwrap(),
-                    revealed,
-                )
-            } else if pos == key_pos {
-                get_key(false, floor_num)
-            } else {
-                Tile {
-                    ch,
-                    blocking,
-                    empt: false,
-                    revealed,
-                    slippery,
-                    door,
-                    step_effect: None,
-                    locked: None,
-                }
-            };
-
-            map.insert_tile(t, pos);
-        }
-    }
-
-    let door = map.get_map_mut(true_door).unwrap();
-    door.ch = Some('╬'.with(KEY_CLRS[floor_num as usize]));
-    door.locked = Some(floor_num);
-    door.blocking = true;
-}
-
-fn create_conveyor(disp: Point, revealed: bool) -> Tile {
-    let step_effect: Option<Box<StepEffect>> =
-        Some(Box::new(move |pos: Point, _map: &bn::Map<En>| {
-            vec![
-                bn::Cmd::new_on(pos).modify_entity(Box::new(move |e: &mut En| {
-                    e.vel = Some(disp);
-                })),
-            ]
-        }));
-    let dir = disp.dir();
-    Tile {
-        ch: Some(ARROWS[dir].green()),
-        blocking: false,
-        empt: false,
-        revealed,
-        slippery: false,
-        door: None,
-        step_effect,
-        locked: None,
-    }
-}
-
-fn get_exit(revealed: bool, floor_num: usize) -> Tile {
-    Tile {
-        ch: Some('>'.with(EXIT_CLRS[floor_num])),
-        blocking: false,
-        empt: false,
-        revealed,
-        door: None,
-        slippery: false,
-        step_effect: Some(Box::new(|_, _| {
-            unsafe {
-                if ENEMIES_REMAINING == 0 {
-                    NEXT_FLOOR = true;
-                    LOG_MSGS.write().unwrap().clear();
-                }
-            }
-            Vec::new()
-        })),
-        locked: None,
-    }
-}
-
-fn get_key(revealed: bool, key_id: u32) -> Tile {
-    Tile {
-        ch: Some(KEY.with(KEY_CLRS[key_id as usize])),
-        blocking: false,
-        empt: false,
-        revealed,
-        door: None,
-        slippery: false,
-        step_effect: Some(Box::new(move |pos, _| {
-            unsafe { KEYS_COLLECTED[key_id as usize] += 1 }
-            LOG_MSGS
-                .write()
-                .unwrap()
-                .push(format!("{} gains key", templates::PLAYER_CHARACTER).into());
-            vec![bn::Cmd::new_on(pos).modify_tile(Box::new(|t: &mut Tile| {
-                t.step_effect = None;
-                t.ch = Some('.'.with(WALL_CLRS[unsafe { FLOORS_CLEARED as usize }]));
-            }))]
-        })),
-        locked: None,
-    }
-}
 
 fn main() {
     // Get the path to this executable so that assets can be loaded even if the project is
@@ -777,7 +478,7 @@ fn main() {
         main_wins.add_win(windowed::Window::new(SEED_POS));
 
         // Map used through the game.
-        let mut map: bn::Map<En> = bn::Map::new(MAP_WIDTH, MAP_HEIGHT);
+        let mut map: bn::Map<En> = bn::Map::new(69, 69);
 
         // Generate the initial floor.
         gen_floor(&mut map, &mut floor_rng, unsafe { FLOORS_CLEARED }, &meta, &templates, &elites);
@@ -1059,6 +760,7 @@ fn clear_events() {
 }
 
 /// Checks some seeds for suspicousness. Returns true if any are sus.
+#[cfg(debug_assertions)]
 fn check_seeds(init_seed: u64, sds: u64) -> bool {
     let meta = templates::metadata::get_metadata();
     let (templates, elites) = templates::get_templates();
@@ -1136,7 +838,7 @@ mod tests {
 
     #[test]
     fn seed_tester() {
-        let sds = 32;
+        let sds = 1024;
 
         let init_seed = rand::rng().random_range(0..u64::MAX-sds);
         let found_fault = check_seeds(init_seed, sds);

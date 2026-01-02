@@ -1,3 +1,9 @@
+# 0.7.2-alpha4
+Performance improvement and refactoring.
+
+## Performance
+- Floor generation is now significantly faster.
+
 # 0.7.2-alpha3
 Cheats and regression fixes.
 
