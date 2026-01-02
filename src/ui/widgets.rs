@@ -6,7 +6,7 @@ use paste::paste;
 macro_rules! field_builder {
     ($struct_name:ident, $field:ident; $f_type:ty) => {
         paste! {
-            #[doc="Set the `" $field "` of the `" $struct_name "` ."] 
+            #[doc="Set the `" $field "` of the `" $struct_name "` ."]
             pub fn [<set_ $field>](self, $field: $f_type) -> Self {
                 Self {
                     $field,
@@ -18,7 +18,7 @@ macro_rules! field_builder {
 
     ($struct_name:ident, $field:ident) => {
         paste! {
-            #[doc="Set the `" $field "` flag of the `" $struct_name "` ."] 
+            #[doc="Set the `" $field "` flag of the `" $struct_name "` ."]
             pub fn [<set_ $field>](self, $field: bool) -> Self {
                 Self {
                     $field,
@@ -49,14 +49,14 @@ impl Button {
         Self::default()
     }
 
-    field_builder!{Button, txt; String}
-    field_builder!{Button, clr; style::Color}
-    field_builder!{Button, hover_clr; style::Color}
-    field_builder!{Button, selector_clr; style::Color}
-    field_builder!{Button, selector; String}
-    field_builder!{Button, event; Event}
-    field_builder!{Button, static_len}
-    field_builder!{Button, screen_pos; Point}
+    field_builder! {Button, txt; String}
+    field_builder! {Button, clr; style::Color}
+    field_builder! {Button, hover_clr; style::Color}
+    field_builder! {Button, selector_clr; style::Color}
+    field_builder! {Button, selector; String}
+    field_builder! {Button, event; Event}
+    field_builder! {Button, static_len}
+    field_builder! {Button, screen_pos; Point}
 
     /// Return the text that would be displayed by this button currently.
     fn get_text(&self) -> Vec<StyleCh> {
@@ -94,13 +94,21 @@ impl Default for Button {
         Self {
             txt: String::from(""),
             clr: style::Color::White,
-            hover_clr: style::Color::Rgb { r: 255, g: 190, b: 0 },
+            hover_clr: style::Color::Rgb {
+                r: 255,
+                g: 190,
+                b: 0,
+            },
             selector: String::from(">"),
-            selector_clr: style::Color::Rgb { r: 255, g: 190, b: 0 },
+            selector_clr: style::Color::Rgb {
+                r: 255,
+                g: 190,
+                b: 0,
+            },
             event: Event::Null,
             hover: false,
             screen_pos: Point::ORIGIN,
-            static_len: false
+            static_len: false,
         }
     }
 }
@@ -137,10 +145,7 @@ pub struct Outline {
 impl Outline {
     /// Create a new outline.
     pub fn new(ch: StyleCh, wid: usize) -> Self {
-        Self { 
-            ch,
-            wid,
-        }
+        Self { ch, wid }
     }
 }
 

@@ -1,8 +1,25 @@
+# 0.7.2-alpha3
+Cheats and regression fixes.
+
+## New Features
+- Added NoClip for debug builds.
+- Added a seed tester that detects cases of previously seen regressions (e.g. impassable doors).
+
+## Regression Fixes
+- Fixed some doors being impossible to use.
+- Fixed ice puzzles being unsolvable in rare cases.
+- Fixed boss rooms occasionally teleporting the player to the next floor on entry.
+
+## General Changes
+- The key is now placed in the approximate centre of its room instead of randomly. This prevents potential confusion
+from players picking up a key immediately upon the room.
+
 # 0.7.2-alpha2
 Adds some developer cheats and a bug fix.
 
 ## New Features
 - Added a kill everyone cheat.
+- Added a window displaying the current seed.
 
 ## Bug Fixes
 - Fixed a regression making the key room occasionally overlap with an ice puzzle and cause the overlap section to be entirely doors.

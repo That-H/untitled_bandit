@@ -11,17 +11,26 @@ use rand::prelude::{IndexedRandom, SliceRandom};
 use rand::{Rng, SeedableRng};
 use std::{collections::HashMap, env, fs, io, thread, time};
 use untitled_bandit::*;
+use templates::metadata::TempMeta;
 
 // Directory of the assets.
 const ASSETS_DIR: &str = "assets";
 
 // UI constants.
 const SELECTOR: &str = ">";
-const SELECTOR_CLR: style::Color = style::Color::Rgb { r: 255, g: 240, b: 0 };
-const HOVER_CLR: style::Color = style::Color::Rgb { r: 255, g: 240, b: 0 };
+const SELECTOR_CLR: style::Color = style::Color::Rgb {
+    r: 255,
+    g: 240,
+    b: 0,
+};
+const HOVER_CLR: style::Color = style::Color::Rgb {
+    r: 255,
+    g: 240,
+    b: 0,
+};
 
-const ROOMS: u32 = 10;
-const SPECIAL_ROOMS: u32 = 1;
+const ROOMS: u32 = 9;
+const SPECIAL_ROOMS: u32 = 2;
 const MAX_WIDTH: i32 = 13;
 const MIN_WIDTH: i32 = 6;
 const MAP_WIDTH: usize = 300;
@@ -52,11 +61,11 @@ const LOG_POS: Point = Point::new(83, 10);
 const LOG_WID: usize = 29;
 const LOG_HGT: usize = 11;
 const DEBUG_WIN: usize = 5;
-const DEBUG_POS: Point = Point::new(19, 19);
-const DEBUG_WID: usize = 18;
+const DEBUG_POS: Point = Point::new(13, 19);
+const DEBUG_WID: usize = 24;
 const SEED_WIN: usize = 6;
-const SEED_POS: Point = Point::new(21, 19);
-const SEED_WID: usize = 16;
+const SEED_POS: Point = Point::new(13, 19);
+const SEED_WID: usize = 24;
 
 // Events for the ui.
 const QUIT: u32 = 0;
@@ -65,7 +74,7 @@ const QUICK_RESET: u32 = 2;
 const PLAY: u32 = 3;
 
 // Seed.
-static mut SEED: u32 = 0x2D;
+static mut SEED: u64 = 0x3213CA29C823B78A;
 
 // Whether cheats are enabled. Only possible in a debug build.
 const CHEATS: bool = if cfg!(debug_assertions) { true } else { false };
@@ -73,9 +82,227 @@ const CHEATS: bool = if cfg!(debug_assertions) { true } else { false };
 const SEED_OVERRIDE: bool = !CHEATS;
 
 // True if the map should be generated with bonus ice.
-const EXTRA_ICE: bool = false;
+const EXTRA_ICE: bool = if cfg!(debug_assertions) { true } else { false };
 
 type StepEffect = dyn Fn(Point, &bn::Map<En>) -> Vec<bn::Cmd<En>>;
+
+fn get_temp<'a>(
+    budget: u32,
+    rng: &mut rand::rngs::SmallRng,
+    elite: bool,
+    temp_counts: &HashMap<char, u32>,
+    meta: &HashMap<char, TempMeta>,
+    templates: &'a [EntityTemplate],
+    elites: &'a [EntityTemplate],
+) -> Option<(&'a EntityTemplate, u32)> {
+    let temps = if elite { elites } else { templates };
+    let possible: Vec<_> = temps
+        .iter()
+        .filter_map(|t| {
+            let ch = t.ch.content();
+            let TempMeta {
+                cost,
+                floor_rang: flrs,
+                max,
+            } = &meta[ch];
+            let cost = *cost;
+            if cost <= budget
+                && flrs.contains(&unsafe { FLOORS_CLEARED })
+                && match temp_counts.get(ch) {
+                    Some(c) => c < max,
+                    _ => true,
+                }
+            {
+                Some((t, cost))
+            } else {
+                None
+            }
+        })
+        .collect();
+    possible.choose(rng).cloned()
+}
+
+fn gen_floor(
+    map: &mut bandit::Map<En>,
+    rng: &mut rand::rngs::SmallRng,
+    floor_num: u32,
+    meta: &HashMap<char, TempMeta>,
+    templates: &[EntityTemplate],
+    elites: &[EntityTemplate],
+) {
+    // Create the player if it is the first floor, otherwise get them.
+    let pl = if floor_num == 0 {
+        templates::get_player()
+    } else {
+        map.get_ent(unsafe { PLAYER }).unwrap().clone()
+    };
+
+    // Reinitialise the map.
+    *map = bandit::Map::new(0, 0);
+
+    unsafe {
+        PLAYER = Point::ORIGIN;
+        LAST_DOOR.write().unwrap().take();
+    }
+    map.insert_entity(pl, unsafe { PLAYER });
+
+    let ice_prevalence = if EXTRA_ICE { 1.0 } else { 0.15 };
+    // Generate the rooms of the map.
+    let (mut grid, mut rooms) = map_gen::map_gen(
+        ROOMS - SPECIAL_ROOMS + floor_num * 3,
+        MAX_WIDTH,
+        MIN_WIDTH,
+        rng,
+    );
+
+    // Rect id of the exit room so that the key room does not generate off of it.
+    let exit_id: usize = rooms.len();
+
+    // Generate a new room specifically for the boss.
+    let true_door = map_gen::gen_rect_in(
+        &mut rooms,
+        &mut grid,
+        rng,
+        MIN_WIDTH,
+        MAX_WIDTH,
+        &[0],
+    );
+
+    map.insert_tile(
+        get_exit(false, floor_num as usize),
+        rooms.last().unwrap().top_left() + Point::new(2, -2),
+    );
+
+    // Generate a new room specifically for the key.
+    map_gen::gen_rect_in(
+        &mut rooms,
+        &mut grid,
+        rng,
+        MIN_WIDTH,
+        MAX_WIDTH,
+        &[0, exit_id],
+    );
+
+    // Create some ice puzzles.
+    map_gen::add_ice(
+        &mut rooms,
+        &mut grid,
+        rng,
+        ice_prevalence,
+    );
+
+    // Generate enemies.
+    for (n, r) in rooms.iter().enumerate().skip(1) {
+        let mut budget = (r.wid * r.hgt) as u32 / 3 * unsafe { FLOORS_CLEARED + 1 };
+        let mut cells: Vec<Point> = r.inner_cells().collect();
+        cells.shuffle(rng);
+
+        // Create a boss in the exit room.
+        let elite = n == exit_id;
+
+        // Don't put anyone in my key room!
+        if n == rooms.len() - 1 {
+            continue;
+        }
+
+        let mut temp_counts = HashMap::new();
+
+        if elite {
+            budget = 75;
+        }
+
+        'enemy_gen: while let Some((temp, cost)) =
+            get_temp(budget, rng, elite, &temp_counts, meta, templates, elites)
+        {
+            budget -= cost;
+            let nx = loop {
+                // Exit early if there is no where to place the entity.
+                let Some(nx) = cells.pop() else {
+                    break 'enemy_gen;
+                };
+
+                let Some(tl) = grid.get(&nx) else { continue };
+                match tl {
+                    map_gen::Cell::Ice(_) | map_gen::Cell::Wall(_) => continue,
+                    _ => break nx,
+                }
+            };
+
+            *temp_counts.entry(*temp.ch.content()).or_insert(0) += 1;
+
+            map.insert_entity(En::from_template(temp, false, true), nx);
+        }
+    }
+
+    let rm = rooms.last().unwrap();
+    let key_pos = rm.top_left() + Point::new(rm.wid / 2, -rm.hgt / 2);
+
+    // Put the cells actually into the map.
+    for y in -(((MAP_HEIGHT / 2) + MAP_OFFSET) as i32)..(MAP_HEIGHT / 2 + MAP_OFFSET) as i32 {
+        for x in -(((MAP_WIDTH / 2) + MAP_OFFSET) as i32)..(MAP_WIDTH / 2 + MAP_OFFSET) as i32 {
+            let pos = Point::new(x, y);
+            let mut blocking = false;
+            let mut slippery = false;
+            let mut door = None;
+
+            // If there is already a tile there, don't overwrite it.
+            if map.get_map(pos).is_some() {
+                continue;
+            };
+
+            let ch = match grid.get(&pos) {
+                Some(cl) => match cl {
+                    map_gen::Cell::Wall(_) => {
+                        blocking = true;
+                        None
+                    }
+                    map_gen::Cell::Inner(_) => {
+                        blocking = false;
+                        None
+                    }
+                    map_gen::Cell::Ice(_) => {
+                        blocking = false;
+                        slippery = true;
+                        Some(ICE_CHAR.on(ICE_CLR))
+                    }
+                    map_gen::Cell::Door(id1, id2) => {
+                        blocking = false;
+                        door = Some((rooms[*id1], rooms[*id2]));
+                        Some(DOOR_CHAR.with(get_door_clr()))
+                    }
+                },
+                None => None,
+            };
+            let revealed = rooms[0].contains(Point::new(x, y));
+            let t = if rng.random_bool(0.0) && !blocking && door.is_none() {
+                create_conveyor(
+                    *Point::ORIGIN.get_all_adjacent().choose(rng).unwrap(),
+                    revealed,
+                )
+            } else if pos == key_pos {
+                get_key(false, floor_num)
+            } else {
+                Tile {
+                    ch,
+                    blocking,
+                    empt: false,
+                    revealed,
+                    slippery,
+                    door,
+                    step_effect: None,
+                    locked: None,
+                }
+            };
+
+            map.insert_tile(t, pos);
+        }
+    }
+
+    let door = map.get_map_mut(true_door).unwrap();
+    door.ch = Some('╬'.with(KEY_CLRS[floor_num as usize]));
+    door.locked = Some(floor_num);
+    door.blocking = true;
+}
 
 fn create_conveyor(disp: Point, revealed: bool) -> Tile {
     let step_effect: Option<Box<StepEffect>> =
@@ -143,16 +370,6 @@ fn get_key(revealed: bool, key_id: u32) -> Tile {
     }
 }
 
-// Metadata about templates.
-struct TempMeta {
-    // Cost to spawn the enemy in a room.
-    cost: u32,
-    // Range of floors it can spawn in.
-    floor_rang: std::ops::RangeInclusive<u32>,
-    // Maximum amount of this entity that can spawn in a room.
-    max: u32,
-}
-
 fn main() {
     // Get the path to this executable so that assets can be loaded even if the project is
     // downloaded from github.
@@ -164,324 +381,16 @@ fn main() {
 
     // Rng used for map generation. Has to be separate to ensure determinism
     // with the map and its contents.
-    let mut floor_rng; 
+    let mut floor_rng;
 
     // Raw mode required for windowed to work correctly.
     terminal::enable_raw_mode();
     execute!(io::stdout(), terminal::Clear(terminal::ClearType::All));
 
+    let meta = templates::metadata::get_metadata();
     let (templates, elites) = templates::get_templates();
 
     // Contains additional metadata about each enemy type.
-    let meta = HashMap::from([
-        (
-            'e',
-            TempMeta {
-                cost: 12,
-                floor_rang: 0..=1,
-                max: 3,
-            },
-        ),
-        (
-            'h',
-            TempMeta {
-                cost: 22,
-                floor_rang: 0..=1,
-                max: 2,
-            },
-        ),
-        (
-            'l',
-            TempMeta {
-                cost: 60,
-                floor_rang: 3..=3,
-                max: 1,
-            },
-        ),
-        (
-            'k',
-            TempMeta {
-                cost: 37,
-                floor_rang: 1..=2,
-                max: 2,
-            },
-        ),
-        (
-            'b',
-            TempMeta {
-                cost: 48,
-                floor_rang: 3..=3,
-                max: 1,
-            },
-        ),
-        (
-            'w',
-            TempMeta {
-                cost: 31,
-                floor_rang: 1..=2,
-                max: 2,
-            },
-        ),
-        (
-            'o',
-            TempMeta {
-                cost: 15,
-                floor_rang: 0..=1,
-                max: 3,
-            },
-        ),
-        (
-            'v',
-            TempMeta {
-                cost: 45,
-                floor_rang: 2..=3,
-                max: 2,
-            },
-        ),
-        (
-            'g',
-            TempMeta {
-                cost: 35,
-                floor_rang: 2..=3,
-                max: 2,
-            },
-        ),
-        (
-            'O',
-            TempMeta {
-                cost: 50,
-                floor_rang: 1..=1,
-                max: 1,
-            },
-        ),
-        (
-            'B',
-            TempMeta {
-                cost: 50,
-                floor_rang: 2..=2,
-                max: 1,
-            },
-        ),
-        (
-            'E',
-            TempMeta {
-                cost: 50,
-                floor_rang: 0..=0,
-                max: 1,
-            },
-        ),
-        (
-            'Ω',
-            TempMeta {
-                cost: 50,
-                floor_rang: 3..=3,
-                max: 1,
-            },
-        ),
-    ]);
-
-    let get_temp = |budget: u32,
-                    rng: &mut rand::rngs::SmallRng,
-                    elite: bool,
-                    temp_counts: &HashMap<char, u32>|
-     -> Option<(&EntityTemplate, u32)> {
-        let temps = if elite { &elites } else { &templates };
-        let possible: Vec<_> = temps
-            .iter()
-            .filter_map(|t| {
-                let ch = t.ch.content();
-                let TempMeta {
-                    cost,
-                    floor_rang: flrs,
-                    max,
-                } = &meta[ch];
-                let cost = *cost;
-                if cost <= budget
-                    && flrs.contains(&unsafe { FLOORS_CLEARED })
-                    && match temp_counts.get(ch) {
-                        Some(c) => c < max,
-                        _ => true,
-                    }
-                {
-                    Some((t, cost))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        possible.choose(rng).cloned()
-    };
-
-    let gen_floor = |map: &mut bandit::Map<En>, rng: &mut rand::rngs::SmallRng, floor_num: u32| {
-        // Create the player if it is the first floor, otherwise get them.
-        let pl = if floor_num == 0 {
-            templates::get_player()
-        } else {
-            map.get_ent(unsafe { PLAYER }).unwrap().clone()
-        };
-
-        // Reinitialise the map.
-        *map = bandit::Map::new(0, 0);
-
-        unsafe {
-            PLAYER = Point::ORIGIN;
-            LAST_DOOR.write().unwrap().take();
-        }
-        map.insert_entity(pl, unsafe { PLAYER });
-
-        let ice_prevalence = if EXTRA_ICE { 1.0 } else { 0.15 };
-        // Generate the rooms of the map.
-        let (mut grid, mut rooms) = map_gen::map_gen(
-            ROOMS - SPECIAL_ROOMS + floor_num * 3,
-            MAX_WIDTH,
-            MIN_WIDTH,
-            rng,
-            ice_prevalence,
-        );
-
-        // Whether we have chosen an exit room yet.
-        let mut done_exit = false;
-        // Location of the door to the exit room.
-        let mut true_door = Point::ORIGIN;
-        // Rect id of the exit room so that the key room does not generate off of it.
-        let mut exit_id: usize = 0;
-
-        // Generate enemies.
-        for (n, r) in rooms.iter().enumerate().skip(1) {
-            let mut budget = (r.wid * r.hgt) as u32 / 3 * unsafe { FLOORS_CLEARED + 1 };
-            let mut cells: Vec<Point> = r.inner_cells().collect();
-            cells.shuffle(rng);
-            let mut elite = false;
-            let mut temp_counts = HashMap::new();
-
-            // Eligible to be an exit room if there is one door to it.
-            if !done_exit {
-                for pos in r.edges() {
-                    if let map_gen::Cell::Door(_, _) = grid.get(&pos).unwrap() {
-                        elite = !elite;
-                        true_door = pos;
-                        exit_id = n;
-                        if !elite {
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if elite {
-                done_exit = true;
-                budget = 75;
-                map.insert_tile(
-                    get_exit(false, floor_num as usize),
-                    r.top_left() + Point::new(1, -1),
-                );
-            }
-
-            'enemy_gen: while let Some((temp, cost)) = get_temp(budget, rng, elite, &temp_counts) {
-                budget -= cost;
-                let nx = loop {
-                    // Exit early if there is no where to place the entity.
-                    let Some(nx) = cells.pop() else {
-                        break 'enemy_gen;
-                    };
-
-                    let Some(tl) = grid.get(&nx) else { continue };
-                    match tl {
-                        map_gen::Cell::Ice(_) | map_gen::Cell::Wall(_) => continue,
-                        _ => break nx,
-                    }
-                };
-
-                *temp_counts.entry(*temp.ch.content()).or_insert(0) += 1;
-
-                map.insert_entity(En::from_template(temp, false, true), nx);
-            }
-        }
-
-        // Generate a new room specifically for the key.
-        map_gen::gen_rect_in(
-            &mut rooms,
-            &mut grid,
-            rng,
-            MIN_WIDTH,
-            MAX_WIDTH,
-            &[0, exit_id],
-        );
-        let key_pos = *rooms
-            .last()
-            .unwrap()
-            .inner_cells()
-            .collect::<Vec<Point>>()
-            .choose(rng)
-            .unwrap();
-
-        // Put the cells actually into the map.
-        for y in -(((MAP_HEIGHT / 2) + MAP_OFFSET) as i32)..(MAP_HEIGHT / 2 + MAP_OFFSET) as i32 {
-            for x in -(((MAP_WIDTH / 2) + MAP_OFFSET) as i32)..(MAP_WIDTH / 2 + MAP_OFFSET) as i32 {
-                let pos = Point::new(x, y);
-                let mut blocking = false;
-                let mut slippery = false;
-                let mut door = None;
-
-                // If there is already a tile there, don't overwrite it.
-                if map.get_map(pos).is_some() {
-                    continue;
-                };
-
-                let ch = match grid.get(&pos) {
-                    Some(cl) => match cl {
-                        map_gen::Cell::Wall(_) => {
-                            blocking = true;
-                            None
-                        }
-                        map_gen::Cell::Inner(_) => {
-                            blocking = false;
-                            None
-                        }
-                        map_gen::Cell::Ice(_) => {
-                            blocking = false;
-                            slippery = true;
-                            Some(ICE_CHAR.on(ICE_CLR))
-                        }
-                        map_gen::Cell::Door(id1, id2) => {
-                            blocking = false;
-                            door = Some((rooms[*id1], rooms[*id2]));
-                            Some(DOOR_CHAR.with(get_door_clr()))
-                        }
-                    },
-                    None => None,
-                };
-                let revealed = rooms[0].contains(Point::new(x, y));
-                let t = if rng.random_bool(0.0) && !blocking && door.is_none() {
-                    create_conveyor(
-                        *Point::ORIGIN.get_all_adjacent().choose(rng).unwrap(),
-                        revealed,
-                    )
-                } else if pos == key_pos {
-                    get_key(false, floor_num)
-                } else {
-                    Tile {
-                        ch,
-                        blocking,
-                        empt: false,
-                        revealed,
-                        slippery,
-                        door,
-                        step_effect: None,
-                        locked: None,
-                    }
-                };
-
-                map.insert_tile(t, pos);
-            }
-        }
-
-        let door = map.get_map_mut(true_door).unwrap();
-        door.ch = Some('╬'.with(KEY_CLRS[floor_num as usize]));
-        door.locked = Some(floor_num);
-        door.blocking = true;
-    };
-
     let mut handle = std::io::stdout();
     execute!(handle, cursor::Hide);
 
@@ -507,7 +416,7 @@ fn main() {
 
     // Display the given window container to the screen.
     let print_win = |win_cont: &windowed::Container<style::StyledContent<char>>| {
-        let mut handle= io::stdout();
+        let mut handle = io::stdout();
 
         // Print the screen.
         let screen = win_cont.to_string_with_default(TERMINAL_WID, TERMINAL_HGT - 1, ' '.stylize());
@@ -660,8 +569,24 @@ fn main() {
                 cur_win.data.push(vec![' '.stylize(); DEBUG_WID]);
 
                 let cur_seed = unsafe { SEED };
-                add_line(style::Color::White, &format!("SEED: {cur_seed:X}"), cur_win, DEBUG_WID);
-                add_line(style::Color::White, &format!("Enemies: {}", unsafe { ENEMIES_REMAINING }), cur_win, DEBUG_WID);
+                add_line(
+                    style::Color::White,
+                    &format!("SEED: {cur_seed:X} "),
+                    cur_win,
+                    DEBUG_WID,
+                );
+                add_line(
+                    style::Color::White,
+                    &format!("Enemies: {}", unsafe { ENEMIES_REMAINING }),
+                    cur_win,
+                    DEBUG_WID,
+                );
+                add_line(
+                    style::Color::White,
+                    &format!("NoClip: {}", if *NO_CLIP.read().unwrap() { "yes" } else { "nah" }),
+                    cur_win,
+                    DEBUG_WID,
+                );
 
                 cur_win.data.push(vec![' '.stylize(); DEBUG_WID]);
 
@@ -672,7 +597,12 @@ fn main() {
                 cur_win.data.clear();
 
                 let cur_seed = unsafe { SEED };
-                add_line(style::Color::White, &format!("Seed: {cur_seed:X}"), cur_win, SEED_WID);
+                add_line(
+                    style::Color::White,
+                    &format!("Seed: {cur_seed:X} "),
+                    cur_win,
+                    SEED_WID,
+                );
 
                 cur_win.outline_with('#'.grey());
             }
@@ -680,7 +610,6 @@ fn main() {
             win_cont.refresh();
 
             print_win(win_cont);
-                
         };
 
     // True if the main_menu should be skipped.
@@ -753,26 +682,27 @@ fn main() {
             .set_static_len(true);
 
         scene.add_element(
-            Box::new(basic_button.clone()
-                .set_txt(String::from("Play"))
-                .set_event(ui::Event::Exit(PLAY))
-                .set_screen_pos(Point::new(1, 1))
+            Box::new(
+                basic_button
+                    .clone()
+                    .set_txt(String::from("Play"))
+                    .set_event(ui::Event::Exit(PLAY))
+                    .set_screen_pos(Point::new(1, 1)),
             ),
             Point::new(1, 1),
         );
         scene.add_element(
-            Box::new(basic_button.clone()
-                .set_txt(String::from("Quit"))
-                .set_event(ui::Event::Exit(QUIT))
-                .set_screen_pos(Point::new(1, 2))
+            Box::new(
+                basic_button
+                    .clone()
+                    .set_txt(String::from("Quit"))
+                    .set_event(ui::Event::Exit(QUIT))
+                    .set_screen_pos(Point::new(1, 2)),
             ),
             Point::new(1, 2),
         );
         scene.add_element(
-            Box::new(ui::widgets::Outline::new(
-                '#'.grey(),
-                8
-            )),
+            Box::new(ui::widgets::Outline::new('#'.grey(), 8)),
             Point::new(999, 999),
         );
         scene.move_cursor(Point::new(1, 1));
@@ -782,34 +712,37 @@ fn main() {
         let mut end_scene = ui::Scene::new(Point::new(54, 20), 12, 5);
 
         end_scene.add_element(
-            Box::new(basic_button.clone()
-                .set_txt(String::from("New run"))
-                .set_event(ui::Event::Exit(QUICK_RESET))
-                .set_screen_pos(Point::new(1, 1))
+            Box::new(
+                basic_button
+                    .clone()
+                    .set_txt(String::from("New run"))
+                    .set_event(ui::Event::Exit(QUICK_RESET))
+                    .set_screen_pos(Point::new(1, 1)),
             ),
             Point::new(1, 1),
         );
         end_scene.add_element(
-            Box::new(basic_button.clone()
-                .set_txt(String::from("Main Menu"))
-                .set_event(ui::Event::Exit(MAIN_MENU))
-                .set_screen_pos(Point::new(1, 2))
+            Box::new(
+                basic_button
+                    .clone()
+                    .set_txt(String::from("Main Menu"))
+                    .set_event(ui::Event::Exit(MAIN_MENU))
+                    .set_screen_pos(Point::new(1, 2)),
             ),
             Point::new(1, 2),
         );
         end_scene.add_element(
-            Box::new(basic_button.clone()
-                .set_txt(String::from("Quit"))
-                .set_event(ui::Event::Exit(QUIT))
-                .set_screen_pos(Point::new(1, 3))
+            Box::new(
+                basic_button
+                    .clone()
+                    .set_txt(String::from("Quit"))
+                    .set_event(ui::Event::Exit(QUIT))
+                    .set_screen_pos(Point::new(1, 3)),
             ),
             Point::new(1, 3),
         );
         end_scene.add_element(
-            Box::new(ui::widgets::Outline::new(
-                '#'.grey(),
-                12
-            )),
+            Box::new(ui::widgets::Outline::new('#'.grey(), 12)),
             Point::new(999, 999),
         );
         end_scene.move_cursor(Point::new(1, 1));
@@ -847,7 +780,7 @@ fn main() {
         let mut map: bn::Map<En> = bn::Map::new(MAP_WIDTH, MAP_HEIGHT);
 
         // Generate the initial floor.
-        gen_floor(&mut map, &mut floor_rng, unsafe { FLOORS_CLEARED });
+        gen_floor(&mut map, &mut floor_rng, unsafe { FLOORS_CLEARED }, &meta, &templates, &elites);
 
         display_map(&map, &mut main_wins);
 
@@ -875,31 +808,6 @@ fn main() {
                             event::KeyCode::Char('f') => ActionType::Fire(0),
                             event::KeyCode::Char('g') => ActionType::Fire(1),
                             event::KeyCode::Char('b') => ActionType::Fire(2),
-                            #[cfg(debug_assertions)]
-                            event::KeyCode::Char('v') => {
-                                let mut sd = 46;
-                                loop {
-                                    floor_rng = rand::rngs::SmallRng::seed_from_u64(sd);
-                                    gen_floor(&mut map, &mut floor_rng, 0);
-                                    let test = |t: Option<&Tile>| {
-                                        if let Some(t) = t && t.door.is_some() {
-                                            true
-                                        } else {
-                                            false
-                                        }
-                                    };
-                                    for y in -70..=70 {
-                                        for x in -70..=70 {
-                                            let pr = Point::new(x, y);
-                                            let ps = [pr, Point::new(x-1, y), Point::new(x, y-1)];
-                                            if ps.into_iter().all(|p| test(map.get_map(p))) {
-                                                eprintln!("{sd:X} is sus as hell at {pr}");
-                                            }
-                                        }
-                                    }
-                                    sd += 1;
-                                }
-                            }
                             // Skip to next floor.
                             event::KeyCode::Char('n') => {
                                 unsafe {
@@ -911,24 +819,42 @@ fn main() {
                                         }
                                     }
                                 }
-                                ActionType::Wait
+                                continue;
+                            }
+                            // Turn on no clip.
+                            event::KeyCode::Char('c') => {
+                                if CHEATS {
+                                    let clipping = *NO_CLIP.read().unwrap();
+                                    *NO_CLIP.write().unwrap() = !clipping;
+
+                                    let mut write = LOG_MSGS.write().unwrap();
+                                    write.push(LogMsg::new(format!(
+                                        "{} {}s hacking",
+                                        templates::PLAYER_CHARACTER,
+                                        if clipping { "stop" } else { "start" }
+                                    )));
+                                    ActionType::Wait
+                                } else {
+                                    continue;
+                                }
                             }
                             // Change seed and restart quickly.
-                            event::KeyCode::Char('x') => {
-                                unsafe {
-                                    if CHEATS {
-                                        SEED = rand::rng().random();
-                                        ENEMIES_REMAINING = 0;
-                                        quick_restart = true;
-                                        continue 'full;
-                                    }
-                                }
+                            #[cfg(debug_assertions)]
+                            event::KeyCode::Char('x') => unsafe {
+                                SEED = rand::rng().random();
+                                ENEMIES_REMAINING = 0;
+                                quick_restart = true;
+                                continue 'full;
+                            },
+                            #[cfg(debug_assertions)]
+                            event::KeyCode::Char('v') => {
+                                check_seeds(0x5F19E7B2F1F16EAB, 10);
                                 ActionType::Wait
-                            }
+                            },
                             // Kill everyone in the room.
                             event::KeyCode::Char('*') => {
                                 unsafe {
-                                    if CHEATS { 
+                                    if CHEATS {
                                         let mut dead = Vec::new();
 
                                         for (&pos, _en) in map.get_entities() {
@@ -945,12 +871,21 @@ fn main() {
                                         }
 
                                         let mut write = LOG_MSGS.write().unwrap();
-                                        write.push(LogMsg::new(format!("{} inquires about the", templates::PLAYER_CHARACTER)));
-                                        write.push(LogMsg::new(String::from("extended warranty of")));
-                                        write.push(LogMsg::new(String::from("the enemies' vehicles")));
+                                        write.push(LogMsg::new(format!(
+                                            "{} inquires about the",
+                                            templates::PLAYER_CHARACTER
+                                        )));
+                                        write.push(LogMsg::new(String::from(
+                                            "extended warranty of",
+                                        )));
+                                        write.push(LogMsg::new(String::from(
+                                            "the enemies' vehicles",
+                                        )));
+                                        ActionType::Wait
+                                    } else {
+                                        continue;
                                     }
                                 }
-                                ActionType::Wait
                             }
                             event::KeyCode::Char('r') => {
                                 let read = LAST_DOOR.read().unwrap();
@@ -1028,7 +963,7 @@ fn main() {
                             break 'main;
                         }
                         NEXT_FLOOR = false;
-                        gen_floor(&mut map, &mut floor_rng, FLOORS_CLEARED);
+                        gen_floor(&mut map, &mut floor_rng, FLOORS_CLEARED, &meta, &templates, &elites);
                         display_map(&map, &mut main_wins);
                     }
                 }
@@ -1120,5 +1055,93 @@ fn clear_events() {
         && b
     {
         event::read();
+    }
+}
+
+/// Checks some seeds for suspicousness. Returns true if any are sus.
+fn check_seeds(init_seed: u64, sds: u64) -> bool {
+    let meta = templates::metadata::get_metadata();
+    let (templates, elites) = templates::get_templates();
+    let mut map = bn::Map::new(69, 69);
+
+    let mut found_fault = false;
+
+    for sd in init_seed..init_seed+sds {
+        let mut floor_rng = rand::rngs::SmallRng::seed_from_u64(sd);
+        eprint!("Trying {sd:X}");
+        eprint!("\r");
+        gen_floor(&mut map, &mut floor_rng, 0, &meta, &templates, &elites);
+        let test = |t: Option<&Tile>| {
+            if let Some(t) = t
+                && t.door.is_some()
+            {
+                true
+            } else {
+                false
+            }
+        };
+        let depth = 25;
+        for y in -depth..=depth {
+            for x in -depth..=depth {
+                let pr = Point::new(x, y);
+                let hell_ps =
+                    [Point::new(x - 1, y), Point::new(x, y - 1)];
+                if test(map.get_map(pr)) {
+                    let mut wall_count = 0;
+                    for dis in Point::ORIGIN.get_all_adjacent() {
+                        match map.get_map(pr + dis) {
+                            Some(t) => {
+                                if t.blocking {
+                                    wall_count += 1
+                                }
+                            }
+                            None => continue,
+                        }
+                    }
+
+                    match wall_count {
+                        0 | 1 => { 
+                            found_fault = true;
+                            eprintln!("{sd:X} at {pr} sus door");
+                        }
+                        3 | 4 => {
+                            eprintln!("{sd:X} at {pr} impassable door");
+                            found_fault = true;
+                        }
+                        _ => (),
+                    }
+
+                    if hell_ps.into_iter().all(|p| test(map.get_map(p)))
+                    {
+                        found_fault = true;
+                        eprintln!("{sd:X} at {pr} door hell");
+                    }
+                }
+            }
+        }
+    }
+
+    if !found_fault {
+        // Clear the line if everything is a-ok
+        eprintln!("\r")
+    }
+
+    found_fault
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seed_tester() {
+        let sds = 32;
+
+        let init_seed = rand::rng().random_range(0..u64::MAX-sds);
+        let found_fault = check_seeds(init_seed, sds);
+        if found_fault {
+            panic!();
+        }
     }
 }

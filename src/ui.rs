@@ -28,7 +28,9 @@ pub trait UiElement {
 
     /// Return a value indicating when the UiElement should be drawn. The highest value will be
     /// drawn last.
-    fn priority(&self) -> i32 { 0 }
+    fn priority(&self) -> i32 {
+        0
+    }
 }
 
 /// Something that can occur when an element is activated.
@@ -209,7 +211,11 @@ impl UiContainer {
                             scene.disp_cursor(p);
                         }
                         Nav::Activate => {
-                            let ev = scene.elements.get_mut(&scene.cursor).expect("No ui elements to activate").activate();
+                            let ev = scene
+                                .elements
+                                .get_mut(&scene.cursor)
+                                .expect("No ui elements to activate")
+                                .activate();
 
                             match ev {
                                 Event::Exit(code) => return code,

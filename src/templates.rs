@@ -7,6 +7,8 @@ pub const PLAYER_CHARACTER: char = '@';
 pub const PLAYER_COLOUR: style::Color = style::Color::Green;
 pub const RING_CHARS: [char; 6] = ['╔', '═', '╗', '║', '╝', '╚'];
 
+pub mod metadata;
+
 /// Create an instance of the default attack pattern.
 pub fn get_default_atks(
     dmg: u32,

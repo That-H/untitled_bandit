@@ -191,7 +191,7 @@ pub fn ice_rect<R: Rng>(
                     None => 999,
                 };
                 // Overwrite and propagate if this path is better.
-                if dist > moves {
+                if moves < dist {
                     dists.insert(pos, moves);
                     // If we reach a door, record this.
                     if let Some(idx) = doors.iter().position(|p| *p == pos) {
@@ -200,7 +200,7 @@ pub fn ice_rect<R: Rng>(
                         // regulations.
                         if doors_found.iter().all(|f| *f) {
                             for inner_d in &doors {
-                                if dists[inner_d] < min_path_len && inner_d != d {
+                                if dists[inner_d] < min_path_len && *inner_d != *d {
                                     continue 'generator;
                                 }
                             }
@@ -242,7 +242,8 @@ pub fn ice_rect<R: Rng>(
 }
 
 /// Generate a new rectangle in the given map (rect list and cell hashmap).
-/// Will not create a new rectangle with a door to an illegal host.
+/// Will not create a new rectangle with a door to an illegal host. Returns the position of the
+/// door.
 pub fn gen_rect_in<R: Rng>(
     rects: &mut Vec<Rect>,
     occupied: &mut HashMap<Point, Cell>,
@@ -250,7 +251,7 @@ pub fn gen_rect_in<R: Rng>(
     min_size: i32,
     max_size: i32,
     illegal_hosts: &[usize],
-) {
+) -> Point {
     // Return the id of the first rect found to overlap with the given one that is not exempt.
     let overlaps = |r: &Rect, rects: &[Rect], exempt: &[usize]| -> Option<usize> {
         rects
@@ -312,18 +313,15 @@ pub fn gen_rect_in<R: Rng>(
                 *allowed = match occupied.get(&(init_pos + *dir)) {
                     Some(c) => match c {
                         Cell::Wall(ids) => {
-                            let mut count = 0;
+                            let mut allowed = true;
                             for id in ids {
-                                if !exempt.contains(id) {
-                                    count += 1;
-                                } 
                                 if *id == 65536 {
-                                    count += 2;
+                                    allowed = false;
                                     break;
                                 }
                             }
 
-                            count <= 1
+                            allowed
                         }
                         _ => false,
                     },
@@ -366,6 +364,7 @@ pub fn gen_rect_in<R: Rng>(
     };
 
     insert_rect(rects, occupied, rect, host, init_pos);
+    init_pos
 }
 
 /// Create various connected rectangles. Returns a map of cells,
@@ -376,10 +375,8 @@ pub fn map_gen<R: Rng>(
     max_size: i32,
     min_size: i32,
     rng: &mut R,
-    ice_prevalence: f64,
 ) -> (HashMap<Point, Cell>, Vec<Rect>) {
     let mut rects: Vec<Rect> = Vec::new();
-    // let mut rng = rand::rngs::StdRng::from_seed([56; 32]);
 
     let mut occupied: HashMap<Point, Cell> = HashMap::new();
 
@@ -387,11 +384,19 @@ pub fn map_gen<R: Rng>(
         gen_rect_in(&mut rects, &mut occupied, rng, min_size, max_size, &[]);
     }
 
+    (occupied, rects)
+}
+
+/// Turns rooms at random into ice rooms.
+pub fn add_ice<R: Rng>(
+    rects: &mut Vec<Rect>,
+    occupied: &mut HashMap<Point, Cell>,
+    rng: &mut R,
+    ice_prevalence: f64,
+) {
     for id in 1..rects.len() {
         if rng.random_bool(ice_prevalence) {
-            ice_rect(&mut rects, &mut occupied, rng, id, 0.3, 3);
+            ice_rect(rects, occupied, rng, id, 0.3, 0);
         }
     }
-
-    (occupied, rects)
 }

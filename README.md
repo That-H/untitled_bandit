@@ -9,7 +9,7 @@ The game is a grid based and turn based roguelike, with all enemies on screen ac
 a single movement (or null movement, also known as waiting a turn) of the player.
 
 During the game, the player will move between rooms via doors, denoted with a '/' character. Many unexplored rooms will 
-contain enemies (each represented with a different character of the latin alphabet), which must all be defeated before
+contain enemies (generally represented with characters from the latin alphabet), which must all be defeated before
 exit is permitted. The attack patterns of specific enemies is up to the player to discover.
 
 Occasionally, the player may encounter a door that is locked, denoted with a '╬' character. These can only be unlocked
@@ -31,7 +31,7 @@ health by 1.
 
 Enemies will try to do the same to the player, often moving towards them if the player is too far away to directly attack.
 An enemy may attack on its next turn if it is highlighted red, and not all enemies have the same attack pattern (tiles 
-        relative to themself that they could perform an attack against on their turn). Some enemies may not attack every turn.
+relative to themself that they could perform an attack against on their turn). Some enemies may not attack every turn.
 
 ## Interface
 
@@ -41,6 +41,8 @@ Various windows will be displayed on this terminal window during gameplay, which
 - In the centre is the main game window.
 - In the top left are basic statistics, including current health, position, floor number, and turns completed.
 - Below the previous window is a window displaying the extent of the player's current attacks.
+- Below that window is a window displaying the current seed. This is necessary in case of a bug being found
+during gameplay.
 - In the top right corner, current held keys are displayed.
 - On the right of the main window, a log of attacks and major events is displayed, with timestamps.
 
@@ -48,19 +50,25 @@ Various windows will be displayed on this terminal window during gameplay, which
 
 Movement can be achieved using any of the following key sets (choose whichever you are most comfortable with):
 
-    - wasd
-    - arrow keys
-    - hjkl 
+- wasd
+- arrow keys
+- hjkl 
 
 The player may also choose to do nothing for a turn, which is performed by pressing the period ('.').
 To end the current run, press the escape key.
 To return to the most recently used door, press 'r'. This can only be done when no enemies are on screen.
 
+#### Menus
+
+Menus will appear as a list of text options, one of which will be highlighted (both with a yellow colour and a 
+'>' prepended to it). This is the currently selected option. These can be navigated between using any of the controls. 
+To select an option, use the 'enter' key or spacebar. 
+
 ## Running The Game
 
 The github repository contains, in the target/release/ folder, an optimised executable file that runs the game. It requires some assets located
-in src, so it is recommended to download the entire project as a zip file and directly run it from there.
-Alternatively, you can build the game from the source code and run the resulting binary. See [Building From Source](#Building-From-Source)
+in the folder of the same name, so it is recommended to download the entire project as a zip file and directly run the executable from the relevant
+subfolder after extracting the zip. Alternatively, you can build the game from the source code and run the resulting binary. See [Building From Source](#Building-From-Source)
 
 ## Dependencies
 
@@ -82,7 +90,7 @@ as well as various stats windows simultaneously.
 
 ### Building From Source
 
-Doing the following will reqiure both [git](https://git-scm.com/) and Cargo (the Rust build system) to be installed.
+Running the following will reqiure both [git](https://git-scm.com/) and Cargo (the Rust build system) to be installed.
 
 	git clone https://github.com/That-H/untitled_bandit
 	cd untitled_bandit

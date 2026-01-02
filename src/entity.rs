@@ -32,6 +32,9 @@ pub static mut KEYS_COLLECTED: [u32; KEY_CLRS_COUNT] = [0; KEY_CLRS_COUNT];
 pub static LOG_MSGS: RwLock<Vec<LogMsg>> = RwLock::new(Vec::new());
 /// Stack of all recently entered door positions.
 pub static LAST_DOOR: RwLock<Option<Point>> = RwLock::new(None);
+/// Walk through the waller.
+pub static NO_CLIP: RwLock<bool> = RwLock::new(false);
+
 
 pub const KEY_CLRS: [style::Color; 4] = [
     style::Color::DarkRed,
@@ -405,7 +408,7 @@ impl bn::Entity for En {
                         let (unlockable, possible) = match cmd.get_map(cur_nx) {
                             Some(t) => {
                                 let u = t.unlockable();
-                                (u, !t.blocking || u)
+                                (u, !t.blocking || u || *NO_CLIP.read().unwrap())
                             }
                             None => (false, false),
                         };
