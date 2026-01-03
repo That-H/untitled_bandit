@@ -1,6 +1,9 @@
 # 0.7.2-alpha4
 Performance improvement and refactoring.
 
+## New Features
+- There is now an option allowing the player to input a seed for the run. This may only use hexadecimal digits.
+
 ## Performance
 - Floor generation is now significantly faster.
 

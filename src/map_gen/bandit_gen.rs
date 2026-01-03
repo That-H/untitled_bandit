@@ -17,7 +17,7 @@ pub const MAX_WIDTH: i32 = 13;
 pub const MIN_WIDTH: i32 = 6;
 
 /// True if the map should be generated with bonus ice puzzle rooms.
-pub const EXTRA_ICE: bool = if cfg!(debug_assertions) { true } else { false };
+pub const EXTRA_ICE: bool = if cfg!(debug_assertions) { false } else { false };
 
 fn get_temp<'a>(
     budget: u32,

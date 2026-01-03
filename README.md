@@ -63,6 +63,8 @@ To return to the most recently used door, press 'r'. This can only be done when 
 Menus will appear as a list of text options, one of which will be highlighted (both with a yellow colour and a 
 '>' prepended to it). This is the currently selected option. These can be navigated between using any of the controls. 
 To select an option, use the 'enter' key or spacebar. 
+Text entry boxes will appear as a line of '\_' characters. Text can be input once it is selected. To finish 
+entering text, press 'esc' or 'enter'.
 
 ## Running The Game
 
@@ -72,7 +74,7 @@ subfolder after extracting the zip. Alternatively, you can build the game from t
 
 ## Dependencies
 
-Below are all the dependencies directly required for the game. You do not have to worry about installing them; they
+Below are all the main dependencies directly required for the game. You do not have to worry about installing them; they
 are already included in the executable.
 Even if you choose to build from source, Cargo automatically downloads dependencies as they are specified in the 
 Cargo.toml file.

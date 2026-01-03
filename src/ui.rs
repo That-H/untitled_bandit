@@ -24,13 +24,19 @@ pub trait UiElement {
     fn activate(&mut self) -> Event;
 
     /// Do something with received data.
-    fn receive(&mut self, d1: usize, d2: usize);
+    fn receive(&mut self, data: &str);
 
     /// Return a value indicating when the UiElement should be drawn. The highest value will be
     /// drawn last.
     fn priority(&self) -> i32 {
         0
     }
+
+    /// Do something with a provided key event and return whether it should receive more text.
+    fn receive_text(&mut self, _ev: event::KeyCode) -> bool { false }
+
+    /// Returns the text associated with this element.
+    fn get_text(&self) -> String { String::new() }
 }
 
 /// Something that can occur when an element is activated.
@@ -41,7 +47,7 @@ pub enum Event {
     /// Change to the scene at the given index.
     ChangeScene(usize),
     /// Broadcast some data to be read by other elements.
-    Broadcast(usize, usize),
+    Broadcast(String),
     /// Do nothing.
     Null,
 }
@@ -75,6 +81,11 @@ impl Scene {
             elem.toggle_hover();
         }
         self.elements.insert(pos, elem);
+    }
+
+    /// Returns a reference to the element at the given position in the scene.
+    pub fn get_element(&self, pos: Point) -> Option<&Box<dyn UiElement>> {
+        self.elements.get(&pos)
     }
 
     /// Move the cursor to the given position if there is an element there.
@@ -131,7 +142,8 @@ enum Nav {
 
 /// Contains various scenes that can be navigated between. Handles key presses.
 pub struct UiContainer {
-    scenes: Vec<Scene>,
+    /// All the scenes stored.
+    pub scenes: Vec<Scene>,
     cur: usize,
 }
 
@@ -188,48 +200,65 @@ impl UiContainer {
 
             while let event::Event::Key(ke) = event::read().expect("what") {
                 if ke.is_press() {
-                    let action = match ke.code {
-                        // Has arrow keys, wasd, and, for the vim users among us, hjkl.
-                        event::KeyCode::Left
-                        | event::KeyCode::Char('a')
-                        | event::KeyCode::Char('h') => Nav::Move(Point::new(-1, 0)),
-                        event::KeyCode::Right
-                        | event::KeyCode::Char('d')
-                        | event::KeyCode::Char('l') => Nav::Move(Point::new(1, 0)),
-                        event::KeyCode::Down
-                        | event::KeyCode::Char('s')
-                        | event::KeyCode::Char('j') => Nav::Move(Point::new(0, 1)),
-                        event::KeyCode::Up
-                        | event::KeyCode::Char('w')
-                        | event::KeyCode::Char('k') => Nav::Move(Point::new(0, -1)),
-                        event::KeyCode::Enter | event::KeyCode::Char(' ') => Nav::Activate,
-                        _ => Nav::Null,
-                    };
+                    let code = ke.code;
 
-                    match action {
-                        Nav::Move(p) => {
-                            scene.disp_cursor(p);
-                        }
-                        Nav::Activate => {
-                            let ev = scene
-                                .elements
-                                .get_mut(&scene.cursor)
-                                .expect("No ui elements to activate")
-                                .activate();
+                    // Check if the element wants text input before doing navigation.
+                    if !scene.elements.get_mut(&scene.cursor).unwrap().receive_text(code) {
+                        let action = match ke.code {
+                            // Has arrow keys, wasd, and, for the vim users among us, hjkl.
+                            event::KeyCode::Left
+                            | event::KeyCode::Char('a')
+                            | event::KeyCode::Char('h') => Nav::Move(Point::new(-1, 0)),
+                            event::KeyCode::Right
+                            | event::KeyCode::Char('d')
+                            | event::KeyCode::Char('l') => Nav::Move(Point::new(1, 0)),
+                            event::KeyCode::Down
+                            | event::KeyCode::Char('s')
+                            | event::KeyCode::Char('j') => Nav::Move(Point::new(0, 1)),
+                            event::KeyCode::Up
+                            | event::KeyCode::Char('w')
+                            | event::KeyCode::Char('k') => Nav::Move(Point::new(0, -1)),
+                            event::KeyCode::Enter | event::KeyCode::Char(' ') => Nav::Activate,
+                            _ => Nav::Null,
+                        };
 
-                            match ev {
-                                Event::Exit(code) => return code,
-                                Event::ChangeScene(idx) => self.cur = idx,
-                                Event::Broadcast(d1, d2) => {
-                                    for elem in scene.elements.values_mut() {
-                                        elem.receive(d1, d2);
-                                    }
-                                }
-                                Event::Null => continue,
+                        match action {
+                            Nav::Move(p) => {
+                                scene.disp_cursor(p);
                             }
+                            Nav::Activate => {
+                                let ev = scene
+                                    .elements
+                                    .get_mut(&scene.cursor)
+                                    .expect("No ui elements to activate")
+                                    .activate();
+
+                                match ev {
+                                    Event::Exit(code) => return code,
+                                    Event::ChangeScene(idx) => { 
+                                        for (y, row) in scene.win.data.iter().enumerate() {
+                                            for (x, _) in row.iter().enumerate() {
+                                                let p = Point::new(x as i32, y as i32) + scene.win.top_left;
+                                                let _ = queue!(
+                                                    handle,
+                                                    cursor::MoveTo(p.x as u16, p.y as u16),
+                                                    style::Print(' ')
+                                                );
+                                            }
+                                        }
+                                        self.cur = idx;
+                                    }
+                                    Event::Broadcast(d) => {
+                                        for elem in scene.elements.values_mut() {
+                                            elem.receive(&d);
+                                        }
+                                    }
+                                    Event::Null => (),
+                                }
+                            }
+                            Nav::Null => continue,
                         }
-                        Nav::Null => continue,
-                    }
+                    } 
                     continue 'full;
                 }
             }

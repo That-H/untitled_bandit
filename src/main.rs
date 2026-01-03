@@ -62,6 +62,7 @@ const QUIT: u32 = 0;
 const MAIN_MENU: u32 = 1;
 const QUICK_RESET: u32 = 2;
 const PLAY: u32 = 3;
+const PLAY_SEEDED: u32 = 4;
 
 // Seed.
 static mut SEED: u64 = 0x3213CA29C823B78A;
@@ -337,7 +338,6 @@ fn main() {
             if SEED_OVERRIDE {
                 SEED = rand::rng().random();
             }
-            floor_rng = rand::rngs::SmallRng::seed_from_u64(SEED as u64);
         }
         let delay = time::Duration::from_millis(DELAY);
         let vfx_delay = time::Duration::from_millis(VFX_DELAY);
@@ -374,13 +374,18 @@ fn main() {
         let mut menu_container = ui::UiContainer::new();
 
         // Main menu.
-        let mut scene = ui::Scene::new(Point::new(56, 20), 8, 4);
+        let mut scene = ui::Scene::new(Point::new(53, 20), 14, 5);
 
         let basic_button = ui::widgets::Button::empty_new()
             .set_selector(String::from(SELECTOR))
             .set_hover_clr(HOVER_CLR)
             .set_selector_clr(SELECTOR_CLR)
             .set_static_len(true);
+
+        let basic_entry = ui::widgets::TextEntry::new()
+            .set_hover_clr(HOVER_CLR)
+            .set_highlight_clr(style::Color::Cyan)
+            .set_active_clr(HOVER_CLR);
 
         scene.add_element(
             Box::new(
@@ -396,18 +401,77 @@ fn main() {
             Box::new(
                 basic_button
                     .clone()
-                    .set_txt(String::from("Quit"))
-                    .set_event(ui::Event::Exit(QUIT))
+                    .set_txt(String::from("Seeded Run"))
+                    .set_event(ui::Event::ChangeScene(1))
                     .set_screen_pos(Point::new(1, 2)),
             ),
             Point::new(1, 2),
         );
         scene.add_element(
-            Box::new(ui::widgets::Outline::new('#'.grey(), 8)),
+            Box::new(
+                basic_button
+                    .clone()
+                    .set_txt(String::from("Quit"))
+                    .set_event(ui::Event::Exit(QUIT))
+                    .set_screen_pos(Point::new(1, 3)),
+            ),
+            Point::new(1, 3),
+        );
+        scene.add_element(
+            Box::new(ui::widgets::Outline::new('#'.grey(), 14)),
             Point::new(999, 999),
         );
         scene.move_cursor(Point::new(1, 1));
         menu_container.add_scene(scene);
+
+        // Seed entry screen.
+        let seed_wid = 20;
+        let mut seed_scene = ui::Scene::new(Point::new(TERMINAL_WID as i32 / 2 - seed_wid as i32 / 2, 20), seed_wid, 5);
+
+        seed_scene.add_element(
+            Box::new(
+                basic_button
+                    .clone()
+                    .set_txt(String::from("Enter Seed: "))
+                    .set_screen_pos(Point::new(1, 1))
+            ),
+            Point::new(0, 0)
+        );
+        seed_scene.add_element(Box::new(
+                basic_entry
+                    .clone()
+                    .set_len(16)
+                    .set_screen_pos(Point::new(2, 2))
+            ),
+            Point::new(1, 2)
+        );
+        seed_scene.add_element(
+            Box::new(
+                basic_button
+                    .clone()
+                    .set_txt(String::from("Play"))
+                    .set_screen_pos(Point::new(1, 3))
+                    .set_event(ui::Event::Exit(PLAY_SEEDED))
+            ),
+            Point::new(1, 3)
+        );
+        seed_scene.add_element(
+            Box::new(
+                basic_button
+                    .clone()
+                    .set_txt(String::from("Back"))
+                    .set_screen_pos(Point::new(7, 3))
+                    .set_event(ui::Event::ChangeScene(0))
+            ),
+            Point::new(2, 3)
+        );
+        seed_scene.add_element(
+            Box::new(ui::widgets::Outline::new('#'.grey(), seed_wid)),
+            Point::new(999, 999),
+        );
+
+        seed_scene.move_cursor(Point::new(1, 2));
+        menu_container.add_scene(seed_scene);
 
         // Death / win_screen.
         let mut end_scene = ui::Scene::new(Point::new(54, 20), 12, 5);
@@ -454,6 +518,13 @@ fn main() {
             match menu_container.run() {
                 QUIT => break 'full,
                 PLAY => (),
+                PLAY_SEEDED => unsafe {
+                    let txt = &menu_container.scenes[1].get_element(Point::new(1, 2)).unwrap().get_text();
+                    SEED = match u64::from_str_radix(txt, 16) {
+                        Ok(val) => val,
+                        Err(_) => rand::rng().random(),
+                    };
+                },
                 c => panic!("Unexpected code '{c}'"),
             }
         }
@@ -479,6 +550,9 @@ fn main() {
 
         // Map used through the game.
         let mut map: bn::Map<En> = bn::Map::new(69, 69);
+
+        // Seed the rng.
+        floor_rng = rand::rngs::SmallRng::seed_from_u64(unsafe { SEED });
 
         // Generate the initial floor.
         gen_floor(&mut map, &mut floor_rng, unsafe { FLOORS_CLEARED }, &meta, &templates, &elites);
@@ -518,9 +592,11 @@ fn main() {
                                         if FLOORS_CLEARED + 1 == KILL_SCREEN as u32 {
                                             break 'main;
                                         }
+                                        ActionType::Wait
+                                    } else {
+                                        continue;
                                     }
                                 }
-                                continue;
                             }
                             // Turn on no clip.
                             event::KeyCode::Char('c') => {
@@ -741,7 +817,7 @@ fn main() {
         end_wins.refresh();
         print_win(&end_wins);
 
-        menu_container.change_scene(1);
+        menu_container.change_scene(2);
         match menu_container.run() {
             QUIT => break 'full,
             MAIN_MENU => (),
