@@ -96,8 +96,6 @@ Running the following will reqiure both [git](https://git-scm.com/) and Cargo (t
 
 	git clone https://github.com/That-H/untitled_bandit
 	cd untitled_bandit
-	cargo build --release
-	cargo run
+	cargo run --release
 
-These commands will create a local copy of the repository, cd into it, and run it with optimisation. Note that the build step
-is required as there will already be an executable in the target/release folder in the local copy, which will be overwritten.
+These commands will create a local copy of the repository, cd into it, and run it with optimisation.
