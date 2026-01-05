@@ -1,3 +1,12 @@
+# 0.7.3-alpha
+MD5 hashing and a bug fix.
+
+## New Features
+- Added md5 hashing to allow seeds to consist of any characters, not just hexadecimal ones.
+
+## Regression Fixes
+- Fixed rooms occasionally generating in the void when the host room has no valid positions to generate from.
+
 # 0.7.2-alpha4
 Performance improvement and refactoring.
 

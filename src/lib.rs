@@ -4,7 +4,10 @@ use crossterm::style::{self, Stylize};
 use rect::Rect;
 use std::fmt;
 use std::ops::{self, Deref};
+use std::sync::RwLock;
 
+// Whether cheats are enabled. Only possible in a debug build.
+pub const CHEATS: bool = if cfg!(debug_assertions) { true } else { false };
 pub const DELAY: u64 = 30;
 pub const VFX_DELAY: u64 = 200;
 pub const MAP_OFFSET: usize = 0;
@@ -30,6 +33,8 @@ pub const WALL_CLRS: [style::Color; KILL_SCREEN] = [
 ];
 pub const ICE_CHAR: char = '*';
 pub const ICE_CLR: style::Color = style::Color::Cyan;
+
+pub static REVEALED: RwLock<bool> = RwLock::new(false);
 
 pub use bandit as bn;
 pub use bn::Point;
@@ -138,7 +143,7 @@ impl bn::Tile for Tile {
 
     fn repr(&self) -> Self::Repr {
         let flrs = unsafe { crate::entity::FLOORS_CLEARED as usize };
-        if !self.revealed {
+        if !self.revealed && !*REVEALED.read().unwrap() {
             ' '.stylize()
         } else if let Some(c) = self.ch {
             c

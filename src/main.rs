@@ -7,11 +7,11 @@ use crossterm::style::{self, Stylize};
 use crossterm::{cursor, event, execute, queue, terminal};
 use entity::*;
 use io::{Read, Write};
+use map_gen::bandit_gen::*;
 use rand::{Rng, SeedableRng};
 use std::{collections::HashMap, env, fs, io, thread, time};
-use untitled_bandit::*;
 use tile_presets::*;
-use map_gen::bandit_gen::*;
+use untitled_bandit::*;
 
 // Directory of the assets.
 const ASSETS_DIR: &str = "assets";
@@ -65,10 +65,8 @@ const PLAY: u32 = 3;
 const PLAY_SEEDED: u32 = 4;
 
 // Seed.
-static mut SEED: u64 = 0x3213CA29C823B78A;
+static mut SEED: u64 = 0xF4047BA207C69C95;
 
-// Whether cheats are enabled. Only possible in a debug build.
-const CHEATS: bool = if cfg!(debug_assertions) { true } else { false };
 // Whether this here initial seed should be ignored.
 const SEED_OVERRIDE: bool = !CHEATS;
 
@@ -285,7 +283,14 @@ fn main() {
                 );
                 add_line(
                     style::Color::White,
-                    &format!("NoClip: {}", if *NO_CLIP.read().unwrap() { "yes" } else { "nah" }),
+                    &format!(
+                        "NoClip: {}",
+                        if *NO_CLIP.read().unwrap() {
+                            "yes"
+                        } else {
+                            "nah"
+                        }
+                    ),
                     cur_win,
                     DEBUG_WID,
                 );
@@ -426,24 +431,29 @@ fn main() {
 
         // Seed entry screen.
         let seed_wid = 20;
-        let mut seed_scene = ui::Scene::new(Point::new(TERMINAL_WID as i32 / 2 - seed_wid as i32 / 2, 20), seed_wid, 5);
+        let mut seed_scene = ui::Scene::new(
+            Point::new(TERMINAL_WID as i32 / 2 - seed_wid as i32 / 2, 20),
+            seed_wid,
+            5,
+        );
 
         seed_scene.add_element(
             Box::new(
                 basic_button
                     .clone()
                     .set_txt(String::from("Enter Seed: "))
-                    .set_screen_pos(Point::new(1, 1))
+                    .set_screen_pos(Point::new(1, 1)),
             ),
-            Point::new(0, 0)
+            Point::new(0, 0),
         );
-        seed_scene.add_element(Box::new(
+        seed_scene.add_element(
+            Box::new(
                 basic_entry
                     .clone()
                     .set_len(16)
-                    .set_screen_pos(Point::new(2, 2))
+                    .set_screen_pos(Point::new(2, 2)),
             ),
-            Point::new(1, 2)
+            Point::new(1, 2),
         );
         seed_scene.add_element(
             Box::new(
@@ -451,9 +461,9 @@ fn main() {
                     .clone()
                     .set_txt(String::from("Play"))
                     .set_screen_pos(Point::new(1, 3))
-                    .set_event(ui::Event::Exit(PLAY_SEEDED))
+                    .set_event(ui::Event::Exit(PLAY_SEEDED)),
             ),
-            Point::new(1, 3)
+            Point::new(1, 3),
         );
         seed_scene.add_element(
             Box::new(
@@ -461,9 +471,9 @@ fn main() {
                     .clone()
                     .set_txt(String::from("Back"))
                     .set_screen_pos(Point::new(7, 3))
-                    .set_event(ui::Event::ChangeScene(0))
+                    .set_event(ui::Event::ChangeScene(0)),
             ),
-            Point::new(2, 3)
+            Point::new(2, 3),
         );
         seed_scene.add_element(
             Box::new(ui::widgets::Outline::new('#'.grey(), seed_wid)),
@@ -519,10 +529,14 @@ fn main() {
                 QUIT => break 'full,
                 PLAY => (),
                 PLAY_SEEDED => unsafe {
-                    let txt = &menu_container.scenes[1].get_element(Point::new(1, 2)).unwrap().get_text();
+                    let txt = &menu_container.scenes[1]
+                        .get_element(Point::new(1, 2))
+                        .unwrap()
+                        .get_text();
+                    // Hash the string to get the seed if it is not in hex.
                     SEED = match u64::from_str_radix(txt, 16) {
                         Ok(val) => val,
-                        Err(_) => rand::rng().random(),
+                        Err(_) => u64::from_ne_bytes(md5::compute(txt).0[0..8].try_into().unwrap()),
                     };
                 },
                 c => panic!("Unexpected code '{c}'"),
@@ -555,7 +569,14 @@ fn main() {
         floor_rng = rand::rngs::SmallRng::seed_from_u64(unsafe { SEED });
 
         // Generate the initial floor.
-        gen_floor(&mut map, &mut floor_rng, unsafe { FLOORS_CLEARED }, &meta, &templates, &elites);
+        gen_floor(
+            &mut map,
+            &mut floor_rng,
+            unsafe { FLOORS_CLEARED },
+            &meta,
+            &templates,
+            &elites,
+        );
 
         display_map(&map, &mut main_wins);
 
@@ -584,20 +605,18 @@ fn main() {
                             event::KeyCode::Char('g') => ActionType::Fire(1),
                             event::KeyCode::Char('b') => ActionType::Fire(2),
                             // Skip to next floor.
-                            event::KeyCode::Char('n') => {
-                                unsafe {
-                                    if CHEATS {
-                                        NEXT_FLOOR = true;
-                                        ENEMIES_REMAINING = 0;
-                                        if FLOORS_CLEARED + 1 == KILL_SCREEN as u32 {
-                                            break 'main;
-                                        }
-                                        ActionType::Wait
-                                    } else {
-                                        continue;
+                            event::KeyCode::Char('n') => unsafe {
+                                if CHEATS {
+                                    NEXT_FLOOR = true;
+                                    ENEMIES_REMAINING = 0;
+                                    if FLOORS_CLEARED + 1 == KILL_SCREEN as u32 {
+                                        break 'main;
                                     }
+                                    ActionType::Wait
+                                } else {
+                                    continue;
                                 }
-                            }
+                            },
                             // Turn on no clip.
                             event::KeyCode::Char('c') => {
                                 if CHEATS {
@@ -609,6 +628,23 @@ fn main() {
                                         "{} {}s hacking",
                                         templates::PLAYER_CHARACTER,
                                         if clipping { "stop" } else { "start" }
+                                    )));
+                                    ActionType::Wait
+                                } else {
+                                    continue;
+                                }
+                            }
+                            // Reveal the map.
+                            event::KeyCode::Char('R') => {
+                                if CHEATS {
+                                    let rev = *REVEALED.read().unwrap();
+                                    *REVEALED.write().unwrap() = !rev;
+
+                                    let mut write = LOG_MSGS.write().unwrap();
+                                    write.push(LogMsg::new(format!(
+                                        "{} {}s seeing all",
+                                        templates::PLAYER_CHARACTER,
+                                        if rev { "stop" } else { "start" }
                                     )));
                                     ActionType::Wait
                                 } else {
@@ -627,43 +663,37 @@ fn main() {
                             event::KeyCode::Char('v') => {
                                 check_seeds(0x5F19E7B2F1F16EAB, 10);
                                 ActionType::Wait
-                            },
-                            // Kill everyone in the room.
-                            event::KeyCode::Char('*') => {
-                                unsafe {
-                                    if CHEATS {
-                                        let mut dead = Vec::new();
-
-                                        for (&pos, _en) in map.get_entities() {
-                                            if pos != PLAYER {
-                                                dead.push(pos);
-                                            }
-                                        }
-
-                                        for d in dead {
-                                            let e = map.get_ent_mut(d).unwrap();
-                                            if !e.dormant {
-                                                e.hp.set_to(0);
-                                            }
-                                        }
-
-                                        let mut write = LOG_MSGS.write().unwrap();
-                                        write.push(LogMsg::new(format!(
-                                            "{} inquires about the",
-                                            templates::PLAYER_CHARACTER
-                                        )));
-                                        write.push(LogMsg::new(String::from(
-                                            "extended warranty of",
-                                        )));
-                                        write.push(LogMsg::new(String::from(
-                                            "the enemies' vehicles",
-                                        )));
-                                        ActionType::Wait
-                                    } else {
-                                        continue;
-                                    }
-                                }
                             }
+                            // Kill everyone in the room.
+                            event::KeyCode::Char('*') => unsafe {
+                                if CHEATS {
+                                    let mut dead = Vec::new();
+
+                                    for (&pos, _en) in map.get_entities() {
+                                        if pos != PLAYER {
+                                            dead.push(pos);
+                                        }
+                                    }
+
+                                    for d in dead {
+                                        let e = map.get_ent_mut(d).unwrap();
+                                        if !e.dormant {
+                                            e.hp.set_to(0);
+                                        }
+                                    }
+
+                                    let mut write = LOG_MSGS.write().unwrap();
+                                    write.push(LogMsg::new(format!(
+                                        "{} inquires about the",
+                                        templates::PLAYER_CHARACTER
+                                    )));
+                                    write.push(LogMsg::new(String::from("extended warranty of")));
+                                    write.push(LogMsg::new(String::from("the enemies' vehicles")));
+                                    ActionType::Wait
+                                } else {
+                                    continue;
+                                }
+                            },
                             event::KeyCode::Char('r') => {
                                 let read = LAST_DOOR.read().unwrap();
                                 let disp = unsafe {
@@ -740,7 +770,14 @@ fn main() {
                             break 'main;
                         }
                         NEXT_FLOOR = false;
-                        gen_floor(&mut map, &mut floor_rng, FLOORS_CLEARED, &meta, &templates, &elites);
+                        gen_floor(
+                            &mut map,
+                            &mut floor_rng,
+                            FLOORS_CLEARED,
+                            &meta,
+                            &templates,
+                            &elites,
+                        );
                         display_map(&map, &mut main_wins);
                     }
                 }
@@ -844,7 +881,7 @@ fn check_seeds(init_seed: u64, sds: u64) -> bool {
 
     let mut found_fault = false;
 
-    for sd in init_seed..init_seed+sds {
+    for sd in init_seed..init_seed + sds {
         let mut floor_rng = rand::rngs::SmallRng::seed_from_u64(sd);
         eprint!("Trying {sd:X}");
         eprint!("\r");
@@ -862,8 +899,7 @@ fn check_seeds(init_seed: u64, sds: u64) -> bool {
         for y in -depth..=depth {
             for x in -depth..=depth {
                 let pr = Point::new(x, y);
-                let hell_ps =
-                    [Point::new(x - 1, y), Point::new(x, y - 1)];
+                let hell_ps = [Point::new(x - 1, y), Point::new(x, y - 1)];
                 if test(map.get_map(pr)) {
                     let mut wall_count = 0;
                     for dis in Point::ORIGIN.get_all_adjacent() {
@@ -878,7 +914,7 @@ fn check_seeds(init_seed: u64, sds: u64) -> bool {
                     }
 
                     match wall_count {
-                        0 | 1 => { 
+                        0 | 1 => {
                             found_fault = true;
                             eprintln!("{sd:X} at {pr} sus door");
                         }
@@ -889,8 +925,7 @@ fn check_seeds(init_seed: u64, sds: u64) -> bool {
                         _ => (),
                     }
 
-                    if hell_ps.into_iter().all(|p| test(map.get_map(p)))
-                    {
+                    if hell_ps.into_iter().all(|p| test(map.get_map(p))) {
                         found_fault = true;
                         eprintln!("{sd:X} at {pr} door hell");
                     }
@@ -907,7 +942,6 @@ fn check_seeds(init_seed: u64, sds: u64) -> bool {
     found_fault
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -916,7 +950,7 @@ mod tests {
     fn seed_tester() {
         let sds = 1024;
 
-        let init_seed = rand::rng().random_range(0..u64::MAX-sds);
+        let init_seed = rand::rng().random_range(0..u64::MAX - sds);
         let found_fault = check_seeds(init_seed, sds);
         if found_fault {
             panic!();

@@ -274,8 +274,8 @@ pub fn gen_rect_in<R: Rng>(
         Rect::new(-max_size / 2, max_size / 2, max_size, max_size)
     } else {
         loop {
-            let mut left = rng.random_range(-max_size..max_size) * max_size;
-            let mut top = rng.random_range(-max_size..max_size) * max_size;
+            let mut left = 0;
+            let mut top = 0;
             let max_wid = rng.random_range(min_size..=max_size);
             let max_hgt = rng.random_range(min_size..=max_size);
             host = loop {
@@ -300,6 +300,11 @@ pub fn gen_rect_in<R: Rng>(
                     top = pos.y;
                     break;
                 }
+            }
+
+            // Didn't find a valid starting position so try somewhere else.
+            if left == 0 && top == 0 {
+                continue;
             }
 
             init_pos = Point::new(left, top);

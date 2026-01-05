@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::RwLock;
+use crate::REVEALED;
 
 /// Type of action the player will perform.
 pub static mut ACTION: ActionType = ActionType::Wait;
@@ -34,7 +35,6 @@ pub static LOG_MSGS: RwLock<Vec<LogMsg>> = RwLock::new(Vec::new());
 pub static LAST_DOOR: RwLock<Option<Point>> = RwLock::new(None);
 /// Walk through the waller.
 pub static NO_CLIP: RwLock<bool> = RwLock::new(false);
-
 
 pub const KEY_CLRS: [style::Color; 4] = [
     style::Color::DarkRed,
@@ -205,7 +205,7 @@ impl bn::Entity for En {
     type Vfx = Vfx;
 
     fn repr(&self) -> <<Self as Entity>::Tile as bn::Tile>::Repr {
-        if !self.dormant {
+        if !self.dormant || *REVEALED.read().unwrap() {
             // Required as the player has no action queue.
             if self.is_player {
                 return self.ch;
@@ -405,12 +405,13 @@ impl bn::Entity for En {
                 match act {
                     ActionType::TryMove(disp) => {
                         let cur_nx = pos + disp;
+                        let clip = *NO_CLIP.read().unwrap();
                         let (unlockable, possible) = match cmd.get_map(cur_nx) {
                             Some(t) => {
                                 let u = t.unlockable();
-                                (u, !t.blocking || u || *NO_CLIP.read().unwrap())
+                                (u, !t.blocking || u || clip)
                             }
-                            None => (false, false),
+                            None => (false, if CHEATS { clip } else { false }),
                         };
 
                         if possible {

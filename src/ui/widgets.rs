@@ -237,7 +237,13 @@ impl TextEntry {
     /// Return the current representation of the entry box.
     fn get_text(&self) -> Vec<StyleCh> {
         let mut chars = Vec::new();
-        let clr = if self.active { self.active_clr } else if self.hover { self.hover_clr } else { self.clr };
+        let clr = if self.active {
+            self.active_clr
+        } else if self.hover {
+            self.hover_clr
+        } else {
+            self.clr
+        };
 
         for (n, ch) in self.txt.iter().enumerate() {
             let mut ch = ch.with(clr);
@@ -278,7 +284,7 @@ impl UiElement for TextEntry {
         let init = self.active;
 
         match ev {
-            event::KeyCode::Char(c) => { 
+            event::KeyCode::Char(c) => {
                 if self.txt.len() < self.len {
                     self.txt.insert(self.cursor, c);
                     self.cursor += 1;

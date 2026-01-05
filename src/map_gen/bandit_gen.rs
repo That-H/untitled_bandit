@@ -1,9 +1,9 @@
 //! Contains code for generating individual floors of the game.
 
 use super::*;
-use std::collections::HashMap;
 use crate::*;
 use entity::*;
+use std::collections::HashMap;
 use templates::metadata::TempMeta;
 use tile_presets::*;
 
@@ -93,14 +93,7 @@ pub fn gen_floor(
     let exit_id: usize = rooms.len();
 
     // Generate a new room specifically for the boss.
-    let true_door = map_gen::gen_rect_in(
-        &mut rooms,
-        &mut grid,
-        rng,
-        MIN_WIDTH,
-        MAX_WIDTH,
-        &[0],
-    );
+    let true_door = map_gen::gen_rect_in(&mut rooms, &mut grid, rng, MIN_WIDTH, MAX_WIDTH, &[0]);
 
     map.insert_tile(
         get_exit(false, floor_num as usize),
@@ -108,7 +101,7 @@ pub fn gen_floor(
     );
 
     // Generate a new room specifically for the key.
-    map_gen::gen_rect_in(
+    let key_door = map_gen::gen_rect_in(
         &mut rooms,
         &mut grid,
         rng,
@@ -117,13 +110,12 @@ pub fn gen_floor(
         &[0, exit_id],
     );
 
+    if crate::CHEATS { 
+        LOG_MSGS.write().unwrap().push(LogMsg::new(format!("Key door at {key_door}")));
+    }
+
     // Create some ice puzzles.
-    map_gen::add_ice(
-        &mut rooms,
-        &mut grid,
-        rng,
-        ice_prevalence,
-    );
+    map_gen::add_ice(&mut rooms, &mut grid, rng, ice_prevalence);
 
     // Generate enemies.
     for (n, r) in rooms.iter().enumerate().skip(1) {
@@ -232,4 +224,3 @@ pub fn gen_floor(
     door.locked = Some(floor_num);
     door.blocking = true;
 }
-

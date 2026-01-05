@@ -33,10 +33,14 @@ pub trait UiElement {
     }
 
     /// Do something with a provided key event and return whether it should receive more text.
-    fn receive_text(&mut self, _ev: event::KeyCode) -> bool { false }
+    fn receive_text(&mut self, _ev: event::KeyCode) -> bool {
+        false
+    }
 
     /// Returns the text associated with this element.
-    fn get_text(&self) -> String { String::new() }
+    fn get_text(&self) -> String {
+        String::new()
+    }
 }
 
 /// Something that can occur when an element is activated.
@@ -203,7 +207,12 @@ impl UiContainer {
                     let code = ke.code;
 
                     // Check if the element wants text input before doing navigation.
-                    if !scene.elements.get_mut(&scene.cursor).unwrap().receive_text(code) {
+                    if !scene
+                        .elements
+                        .get_mut(&scene.cursor)
+                        .unwrap()
+                        .receive_text(code)
+                    {
                         let action = match ke.code {
                             // Has arrow keys, wasd, and, for the vim users among us, hjkl.
                             event::KeyCode::Left
@@ -235,10 +244,11 @@ impl UiContainer {
 
                                 match ev {
                                     Event::Exit(code) => return code,
-                                    Event::ChangeScene(idx) => { 
+                                    Event::ChangeScene(idx) => {
                                         for (y, row) in scene.win.data.iter().enumerate() {
                                             for (x, _) in row.iter().enumerate() {
-                                                let p = Point::new(x as i32, y as i32) + scene.win.top_left;
+                                                let p = Point::new(x as i32, y as i32)
+                                                    + scene.win.top_left;
                                                 let _ = queue!(
                                                     handle,
                                                     cursor::MoveTo(p.x as u16, p.y as u16),
@@ -258,7 +268,7 @@ impl UiContainer {
                             }
                             Nav::Null => continue,
                         }
-                    } 
+                    }
                     continue 'full;
                 }
             }

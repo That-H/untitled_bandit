@@ -79,4 +79,3 @@ pub fn get_key(revealed: bool, key_id: u32) -> Tile {
         locked: None,
     }
 }
-
