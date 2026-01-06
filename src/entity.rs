@@ -2,6 +2,7 @@
 #![allow(static_mut_refs)]
 
 use super::*;
+use crate::REVEALED;
 use crate::bn;
 use attacks::*;
 use bn::Entity;
@@ -9,7 +10,6 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::RwLock;
-use crate::REVEALED;
 
 /// Type of action the player will perform.
 pub static mut ACTION: ActionType = ActionType::Wait;
@@ -114,7 +114,7 @@ pub struct En {
     /// Is the entity visible and able to do stuff?
     pub dormant: bool,
     /// True if the entity acted this turn.
-    acted: bool,
+    pub acted: bool,
     /// Contains a value if the entity is forced to move in a specific direction.
     pub vel: Option<Point>,
 }

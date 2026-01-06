@@ -4,8 +4,8 @@ version = 4
 
 [[package]]
 name = "bandit"
-version = "0.4.1"
-source = "git+https://github.com/That-H/bandit?tag=0.4.1#0f8867bde3412ed7670c408f5147e1ec25266c92"
+version = "0.4.2"
+source = "git+https://github.com/That-H/bandit?tag=0.4.2#be3a232a30da5e311d978e3376bcd3f223533651"
 dependencies = [
  "point",
  "windowed",
@@ -89,6 +89,12 @@ checksum = "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
 dependencies = [
  "litrs",
 ]
+
+[[package]]
+name = "dyn-clone"
+version = "1.0.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "errno"
@@ -372,10 +378,11 @@ checksum = "f6ccf251212114b54433ec949fd6a7841275f9ada20dddd2f29e9ceea4501493"
 
 [[package]]
 name = "untitled_bandit"
-version = "0.7.3-alpha"
+version = "0.7.4-alpha"
 dependencies = [
  "bandit",
  "crossterm",
+ "dyn-clone",
  "md5",
  "paste",
  "rand",

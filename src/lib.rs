@@ -1,6 +1,7 @@
 #![allow(static_mut_refs)]
 
 use crossterm::style::{self, Stylize};
+use dyn_clone::{DynClone, clone_trait_object};
 use rect::Rect;
 use std::fmt;
 use std::ops::{self, Deref};
@@ -54,12 +55,28 @@ pub mod ui;
 
 pub mod tile_presets;
 
+pub mod puzzle_loader;
+
+pub mod datum;
+pub use datum::Datum;
+
 /// Returns the colour of doors on the current floor.
 pub fn get_door_clr() -> style::Color {
     DOOR_CLRS[unsafe { FLOORS_CLEARED as usize }]
 }
 
+/// Required to make Tiles Clone.
+pub trait StepEffectFn:
+    DynClone + Fn(Point, &bn::Map<entity::En>) -> Vec<bn::Cmd<entity::En>>
+{
+}
+
+impl<T: DynClone + Fn(Point, &bn::Map<entity::En>) -> Vec<bn::Cmd<entity::En>>> StepEffectFn for T {}
+
+clone_trait_object! {StepEffectFn}
+
 /// A single tile in a map.
+#[derive(Clone)]
 pub struct Tile {
     /// Whether there is anything there or not.
     pub empt: bool,
@@ -75,12 +92,10 @@ pub struct Tile {
     pub locked: Option<u32>,
     /// Whether the tile engages sliding.
     pub slippery: bool,
-    /// Something that occurs when an entity steps on this tile. The arguments are the position
-    /// of the tile and a commands instance with which to actuate effects.
-    pub step_effect: Option<Box<StepEffect>>,
+    /// Something that occurs when an entity steps on this tile. The arguments are the position of
+    /// the tile and the map the tile is in. It should return all the commands to be executed.
+    pub step_effect: Option<Box<dyn StepEffectFn>>,
 }
-
-type StepEffect = dyn Fn(Point, &bn::Map<entity::En>) -> Vec<bn::Cmd<entity::En>>;
 
 impl Tile {
     /// Create a new revealed empty tile.
@@ -226,94 +241,6 @@ impl bn::Vfx for Vfx {
 
     fn modify_txt(&self, txt: &Self::Txt) -> Self::Txt {
         self.frames[self.cur_idx].map(txt)
-    }
-}
-
-/// Stores a value and ensures it does not exceed a maximum.
-#[derive(Clone)]
-pub struct Datum<T: Clone + PartialOrd> {
-    /// Maximum value of the datum.
-    pub max: T,
-    cur: Option<T>,
-}
-
-impl<T: Clone + PartialOrd> Datum<T> {
-    /// Create a new Datum with the given max value. The current value will also
-    /// be set to this value.
-    pub fn new(max: T) -> Self {
-        Self { cur: None, max }
-    }
-
-    /// Set the current value to the given one if it is less than max.
-    pub fn set_to(&mut self, new_val: T) {
-        self.cur = if new_val > self.max {
-            None
-        } else {
-            Some(new_val)
-        }
-    }
-
-    /// Reset to the max value.
-    pub fn reset(&mut self) {
-        self.cur = None;
-    }
-
-    /// Return a reference to the current value stored.
-    pub fn value(&self) -> &T {
-        self.deref()
-    }
-}
-
-impl<T: Clone + PartialOrd> PartialEq<T> for Datum<T> {
-    fn eq(&self, other: &T) -> bool {
-        (**self) == *other
-    }
-}
-
-impl<T: Clone + PartialOrd> ops::AddAssign<T> for Datum<T>
-where
-    for<'a> &'a T: ops::Add<T, Output = T>,
-{
-    fn add_assign(&mut self, other: T) {
-        self.set_to((*self).deref() + other)
-    }
-}
-
-impl<T: Clone + PartialOrd> ops::SubAssign<T> for Datum<T>
-where
-    for<'a> &'a T: ops::Sub<T, Output = T>,
-{
-    fn sub_assign(&mut self, other: T) {
-        self.set_to((*self).deref() - other)
-    }
-}
-
-impl<T: Clone + PartialOrd> ops::MulAssign<T> for Datum<T>
-where
-    for<'a> &'a T: ops::Mul<T, Output = T>,
-{
-    fn mul_assign(&mut self, other: T) {
-        self.set_to((*self).deref() * other)
-    }
-}
-
-impl<T: Clone + PartialOrd> ops::DivAssign<T> for Datum<T>
-where
-    for<'a> &'a T: ops::Div<T, Output = T>,
-{
-    fn div_assign(&mut self, other: T) {
-        self.set_to((*self).deref() / other)
-    }
-}
-
-impl<T: Clone + PartialOrd> ops::Deref for Datum<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        match self.cur.as_ref() {
-            Some(c) => c,
-            None => &self.max,
-        }
     }
 }
 

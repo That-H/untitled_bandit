@@ -63,9 +63,13 @@ const MAIN_MENU: u32 = 1;
 const QUICK_RESET: u32 = 2;
 const PLAY: u32 = 3;
 const PLAY_SEEDED: u32 = 4;
+const PUZZLE_SELECT: u32 = 5;
 
 // Seed.
-static mut SEED: u64 = 0xF4047BA207C69C95;
+static mut SEED: u64 = 0xBB219F0909BD0E20;
+
+// Contains the id of the puzzle if we are currently doing one. Not to be confused with a puzzle room.
+static mut PUZZLE: Option<usize> = None;
 
 // Whether this here initial seed should be ignored.
 const SEED_OVERRIDE: bool = !CHEATS;
@@ -87,8 +91,59 @@ fn main() {
     terminal::enable_raw_mode();
     execute!(io::stdout(), terminal::Clear(terminal::ClearType::All));
 
+    // Get entity templates.
     let meta = templates::metadata::get_metadata();
     let (templates, elites) = templates::get_templates();
+
+    // Load puzzles.
+    let mut tile_set = puzzle_loader::ts::TileSet::new();
+    tile_set.add_temps(&templates);
+    tile_set.add_temps(&elites);
+
+    // Add the player with 1 hp.
+    let mut pzl_player = templates::get_player();
+    pzl_player.hp.change_max(1);
+    tile_set.add_entity(pzl_player);
+
+    // Add some keys
+    for i in 0..KILL_SCREEN {
+        tile_set.add_tile(tile_presets::get_key(true, i as u32));
+    }
+
+    // Add the exit tile.
+    tile_set.add_tile(tile_presets::get_exit(true, 0));
+
+    // Add the walls.
+    tile_set.add_tile(Tile {
+        ch: Some('#'.grey()),
+        empt: false,
+        blocking: true,
+        door: None,
+        revealed: true,
+        locked: None,
+        slippery: false,
+        step_effect: None,
+    });
+
+    let empty_t = Tile {
+        ch: Some('.'.grey()),
+        empt: false,
+        blocking: false,
+        door: None,
+        revealed: true,
+        locked: None,
+        slippery: false,
+        step_effect: None,
+    };
+
+    // Add the floor.
+    tile_set.add_tile(empty_t.clone());
+
+    let pzls =
+        puzzle_loader::load_pzls(this_path.join("puzzles.txt"), &empty_t, &tile_set).unwrap();
+    let mut stars_earned = vec![0; pzls.len()];
+
+    let pzl_count = pzls.len();
 
     // Contains additional metadata about each enemy type.
     let mut handle = std::io::stdout();
@@ -133,6 +188,7 @@ fn main() {
         |map: &bn::Map<En>, win_cont: &mut windowed::Container<style::StyledContent<char>>| {
             let player_pos = unsafe { PLAYER };
             let pl = map.get_ent(player_pos).unwrap();
+            let is_puzzle = unsafe { PUZZLE.is_some() };
 
             // Display the game window.
             let top_left =
@@ -153,13 +209,15 @@ fn main() {
                 cur_win,
                 STATS_WID,
             );
-            // Floor display.
-            add_line(
-                style::Color::Green,
-                &format!("Floor {}", unsafe { FLOORS_CLEARED }),
-                cur_win,
-                STATS_WID,
-            );
+            if unsafe { PUZZLE.is_none() } {
+                // Floor display.
+                add_line(
+                    style::Color::Green,
+                    &format!("Floor {}", unsafe { FLOORS_CLEARED }),
+                    cur_win,
+                    STATS_WID,
+                );
+            }
             // Position display.
             add_line(
                 style::Color::Green,
@@ -262,56 +320,58 @@ fn main() {
             cur_win.data.push(vec![' '.stylize(); LOG_WID]);
             cur_win.outline_with('#'.grey());
 
-            if cfg!(debug_assertions) {
-                // Display some debug information.
-                cur_win = &mut win_cont.windows[DEBUG_WIN];
-                cur_win.data.clear();
-                cur_win.data.push(vec![' '.stylize(); DEBUG_WID]);
+            if !is_puzzle {
+                if cfg!(debug_assertions) {
+                    // Display some debug information.
+                    cur_win = &mut win_cont.windows[DEBUG_WIN];
+                    cur_win.data.clear();
+                    cur_win.data.push(vec![' '.stylize(); DEBUG_WID]);
 
-                let cur_seed = unsafe { SEED };
-                add_line(
-                    style::Color::White,
-                    &format!("SEED: {cur_seed:X} "),
-                    cur_win,
-                    DEBUG_WID,
-                );
-                add_line(
-                    style::Color::White,
-                    &format!("Enemies: {}", unsafe { ENEMIES_REMAINING }),
-                    cur_win,
-                    DEBUG_WID,
-                );
-                add_line(
-                    style::Color::White,
-                    &format!(
-                        "NoClip: {}",
-                        if *NO_CLIP.read().unwrap() {
-                            "yes"
-                        } else {
-                            "nah"
-                        }
-                    ),
-                    cur_win,
-                    DEBUG_WID,
-                );
+                    let cur_seed = unsafe { SEED };
+                    add_line(
+                        style::Color::White,
+                        &format!("SEED: {cur_seed:X} "),
+                        cur_win,
+                        DEBUG_WID,
+                    );
+                    add_line(
+                        style::Color::White,
+                        &format!("Enemies: {}", unsafe { ENEMIES_REMAINING }),
+                        cur_win,
+                        DEBUG_WID,
+                    );
+                    add_line(
+                        style::Color::White,
+                        &format!(
+                            "NoClip: {}",
+                            if *NO_CLIP.read().unwrap() {
+                                "yes"
+                            } else {
+                                "nah"
+                            }
+                        ),
+                        cur_win,
+                        DEBUG_WID,
+                    );
 
-                cur_win.data.push(vec![' '.stylize(); DEBUG_WID]);
+                    cur_win.data.push(vec![' '.stylize(); DEBUG_WID]);
 
-                cur_win.outline_with('#'.grey());
-            } else {
-                // Display just the seed.
-                cur_win = &mut win_cont.windows[SEED_WIN];
-                cur_win.data.clear();
+                    cur_win.outline_with('#'.grey());
+                } else {
+                    // Display just the seed.
+                    cur_win = &mut win_cont.windows[SEED_WIN];
+                    cur_win.data.clear();
 
-                let cur_seed = unsafe { SEED };
-                add_line(
-                    style::Color::White,
-                    &format!("Seed: {cur_seed:X} "),
-                    cur_win,
-                    SEED_WID,
-                );
+                    let cur_seed = unsafe { SEED };
+                    add_line(
+                        style::Color::White,
+                        &format!("Seed: {cur_seed:X} "),
+                        cur_win,
+                        SEED_WID,
+                    );
 
-                cur_win.outline_with('#'.grey());
+                    cur_win.outline_with('#'.grey());
+                }
             }
 
             win_cont.refresh();
@@ -321,6 +381,9 @@ fn main() {
 
     // True if the main_menu should be skipped.
     let mut quick_restart = false;
+
+    // True if we should go straight to the puzzle screen instead of the main menu.
+    let mut insta_puzzle = false;
 
     'full: loop {
         // Reset globals.
@@ -356,6 +419,9 @@ fn main() {
         main_menu_cont.add_win(windowed::Window::new(Point::new(26, 1)));
 
         if !quick_restart {
+            unsafe {
+                PUZZLE = None;
+            }
             // Open the main menu file.
             let mut f = fs::File::open(this_path.join("main_menu.txt")).unwrap();
             let mut main_text = String::new();
@@ -379,7 +445,7 @@ fn main() {
         let mut menu_container = ui::UiContainer::new();
 
         // Main menu.
-        let mut scene = ui::Scene::new(Point::new(53, 20), 14, 5);
+        let mut scene = ui::Scene::new(Point::new(53, 20), 14, 6);
 
         let basic_button = ui::widgets::Button::empty_new()
             .set_selector(String::from(SELECTOR))
@@ -416,11 +482,21 @@ fn main() {
             Box::new(
                 basic_button
                     .clone()
-                    .set_txt(String::from("Quit"))
-                    .set_event(ui::Event::Exit(QUIT))
+                    .set_txt(String::from("Puzzles"))
+                    .set_event(ui::Event::ChangeScene(3))
                     .set_screen_pos(Point::new(1, 3)),
             ),
             Point::new(1, 3),
+        );
+        scene.add_element(
+            Box::new(
+                basic_button
+                    .clone()
+                    .set_txt(String::from("Quit"))
+                    .set_event(ui::Event::Exit(QUIT))
+                    .set_screen_pos(Point::new(1, 4)),
+            ),
+            Point::new(1, 4),
         );
         scene.add_element(
             Box::new(ui::widgets::Outline::new('#'.grey(), 14)),
@@ -484,7 +560,7 @@ fn main() {
         menu_container.add_scene(seed_scene);
 
         // Death / win_screen.
-        let mut end_scene = ui::Scene::new(Point::new(54, 20), 12, 5);
+        let mut end_scene = ui::Scene::new(Point::new(54, 21), 12, 5);
 
         end_scene.add_element(
             Box::new(
@@ -524,6 +600,88 @@ fn main() {
 
         menu_container.add_scene(end_scene);
 
+        // Puzzle selection screen.
+        let mut pzl_scene = ui::Scene::new(Point::new(51, 20), 18, pzl_count + 2);
+        for (n, pzl) in pzls.iter().enumerate() {
+            let pos = Point::new(1, n as i32 + 1);
+            let strs = stars_earned[n];
+            let str1 = if strs >= 1 { '*' } else { ' ' };
+            let str2 = if strs >= 2 { '*' } else { ' ' };
+
+            pzl_scene.add_element(
+                Box::new(
+                    basic_button
+                        .clone()
+                        .set_txt(format!("Puzzle {n}: {} {str1}{str2}", pzl.diff))
+                        .set_event(ui::Event::Exit(n as u32 + 100))
+                        .set_screen_pos(pos)
+                ), pos);
+        }
+        pzl_scene.add_element(
+            Box::new(ui::widgets::Outline::new('#'.grey(), 18)),
+            Point::new(999, 999),
+        );
+
+        pzl_scene.move_cursor(Point::new(1, 1));
+
+        menu_container.add_scene(pzl_scene);
+
+        // Alternate end screen for puzzles.
+        let mut puzzle_end = ui::Scene::new(Point::new(52, 18), 16, 6);
+
+        puzzle_end.add_element(
+            Box::new(
+                basic_button
+                    .clone()
+                    .set_txt(String::from("Retry"))
+                    .set_event(ui::Event::Exit(QUICK_RESET))
+                    .set_screen_pos(Point::new(1, 1)),
+            ),
+            Point::new(1, 1),
+        );
+        puzzle_end.add_element(
+            Box::new(
+                basic_button
+                    .clone()
+                    .set_txt(String::from("Puzzle Select"))
+                    .set_event(ui::Event::Exit(PUZZLE_SELECT))
+                    .set_screen_pos(Point::new(1, 2)),
+            ),
+            Point::new(1, 2),
+        );
+        puzzle_end.add_element(
+            Box::new(
+                basic_button
+                    .clone()
+                    .set_txt(String::from("Main Menu"))
+                    .set_event(ui::Event::Exit(MAIN_MENU))
+                    .set_screen_pos(Point::new(1, 3)),
+            ),
+            Point::new(1, 3),
+        );
+        puzzle_end.add_element(
+            Box::new(
+                basic_button
+                    .clone()
+                    .set_txt(String::from("Quit"))
+                    .set_event(ui::Event::Exit(QUIT))
+                    .set_screen_pos(Point::new(1, 4)),
+            ),
+            Point::new(1, 4),
+        );
+        puzzle_end.add_element(
+            Box::new(ui::widgets::Outline::new('#'.grey(), 16)),
+            Point::new(999, 999),
+        );
+        puzzle_end.move_cursor(Point::new(1, 1));
+
+        menu_container.add_scene(puzzle_end);
+
+        if insta_puzzle {
+            menu_container.change_scene(3);
+            insta_puzzle = false;
+        }
+
         if !quick_restart {
             match menu_container.run() {
                 QUIT => break 'full,
@@ -538,6 +696,12 @@ fn main() {
                         Ok(val) => val,
                         Err(_) => u64::from_ne_bytes(md5::compute(txt).0[0..8].try_into().unwrap()),
                     };
+                },
+                // Puzzle selected.
+                c if c >= 100 && c < 100 + pzl_count as u32 => {
+                    unsafe { 
+                        PUZZLE = Some(c as usize - 100);
+                    }
                 },
                 c => panic!("Unexpected code '{c}'"),
             }
@@ -562,21 +726,32 @@ fn main() {
         main_wins.add_win(windowed::Window::new(DEBUG_POS));
         main_wins.add_win(windowed::Window::new(SEED_POS));
 
-        // Map used through the game.
-        let mut map: bn::Map<En> = bn::Map::new(69, 69);
-
         // Seed the rng.
         floor_rng = rand::rngs::SmallRng::seed_from_u64(unsafe { SEED });
 
-        // Generate the initial floor.
-        gen_floor(
-            &mut map,
-            &mut floor_rng,
-            unsafe { FLOORS_CLEARED },
-            &meta,
-            &templates,
-            &elites,
-        );
+        // Map used through the game.
+        let mut map: bn::Map<En> = unsafe {
+            if let Some(idx) = PUZZLE {
+                let pzl = &pzls[idx];
+                PLAYER = pzl.pl_pos;
+                ENEMIES_REMAINING = pzl.data.get_entities().count() - 1;
+                pzl.data.clone()
+            } else {
+                let mut map = bn::Map::new(69, 69);
+
+                // Generate the initial floor.
+                gen_floor(
+                    &mut map,
+                    &mut floor_rng,
+                    FLOORS_CLEARED,
+                    &meta,
+                    &templates,
+                    &elites,
+                );
+
+                map
+            }
+        };
 
         display_map(&map, &mut main_wins);
 
@@ -765,6 +940,9 @@ fn main() {
 
                     // Check if the player has left the floor.
                     if NEXT_FLOOR {
+                        if PUZZLE.is_some() {
+                            break 'main;
+                        }
                         FLOORS_CLEARED += 1;
                         if FLOORS_CLEARED == KILL_SCREEN as u32 {
                             break 'main;
@@ -814,38 +992,84 @@ fn main() {
         let cur_win = &mut end_wins.windows[1];
 
         add_line(style::Color::White, "", cur_win, main_wid);
+        let is_puzzle = unsafe { PUZZLE.is_some() };
 
-        // Real time taken.
-        add_line(
-            style::Color::White,
-            &format!("Time Elapsed: {}:{:02}", time_taken / 60, time_taken % 60,),
-            cur_win,
-            main_wid,
-        );
+        if !is_puzzle {
+            // Real time taken.
+            add_line(
+                style::Color::White,
+                &format!("Time Elapsed: {}:{:02}", time_taken / 60, time_taken % 60,),
+                cur_win,
+                main_wid,
+            );
+        }
 
+        let turns = unsafe { GLOBAL_TIME };
         // In game time taken.
         add_line(
             style::Color::White,
-            &format!("Turns: {}", unsafe { GLOBAL_TIME },),
+            &format!("Turns: {}", turns,),
             cur_win,
             main_wid,
         );
+        
+        if is_puzzle {
+            unsafe { 
+                let idx = *PUZZLE.as_ref().unwrap();
+                let stars = if DEAD {
+                    0
+                } else {
+                    if turns > pzls[idx].move_lim {
+                        1
+                    } else {
+                        2
+                    }
+                };
+                stars_earned[idx] = std::cmp::max(stars_earned[idx], stars);
+                let msg = match stars {
+                    0 => "0 stars...",
+                    1 => "1 star.",
+                    2 => "2 stars!",
+                    _ => "hacks, apparently",
+                };
+                add_line(
+                    style::Color::White,
+                    &format!("You get {msg}"),
+                    cur_win,
+                    main_wid,
+                );
+            }
+        }
 
-        // Floor reached.
-        add_line(
-            style::Color::White,
-            &format!("Floor Reached: {}", unsafe { FLOORS_CLEARED },),
-            cur_win,
-            main_wid,
-        );
+        if !is_puzzle {
+            // Floor reached.
+            add_line(
+                style::Color::White,
+                &format!("Floor Reached: {}", unsafe { FLOORS_CLEARED },),
+                cur_win,
+                main_wid,
+            );
+        }
 
-        // Enemies killed.
-        add_line(
-            style::Color::White,
-            &format!("Enemies Killed: {}", unsafe { KILLED },),
-            cur_win,
-            main_wid,
-        );
+        if !is_puzzle {
+            // Enemies killed.
+            add_line(
+                style::Color::White,
+                &format!("Enemies Killed: {}", unsafe { KILLED },),
+                cur_win,
+                main_wid,
+            );
+        }
+
+        if !is_puzzle {
+            // Seed used.
+            add_line(
+                style::Color::White,
+                &format!("Seed: {:X}", unsafe { SEED },),
+                cur_win,
+                main_wid,
+            );
+        }
 
         add_line(style::Color::White, "", cur_win, main_wid);
 
@@ -854,11 +1078,20 @@ fn main() {
         end_wins.refresh();
         print_win(&end_wins);
 
-        menu_container.change_scene(2);
+        menu_container.change_scene(if is_puzzle { 4 } else { 2 });
         match menu_container.run() {
             QUIT => break 'full,
             MAIN_MENU => (),
             QUICK_RESET => quick_restart = true,
+            // This is necessary to ensure the screen is reloaded.
+            PUZZLE_SELECT => insta_puzzle = true,
+            // Puzzle selected.
+            c if c >= 100 && c < 100 + pzl_count as u32 => {
+                unsafe { 
+                    PUZZLE = Some(c as usize - 100);
+                    quick_restart = true;
+                }
+            },
             c => panic!("Unexpected code '{c}'"),
         }
     }

@@ -9,7 +9,7 @@ pub const ARROWS: [char; 4] = ['↓', '←', '↑', '→'];
 pub const KEY: char = '⚷';
 /// Colour of the exit on each floor.
 pub const EXIT_CLRS: [style::Color; KILL_SCREEN] = KEY_CLRS;
-type StepEffect = dyn Fn(Point, &bn::Map<En>) -> Vec<bn::Cmd<En>>;
+type StepEffect = dyn StepEffectFn;
 
 /// Return a conveyor tile pushing entities that step on it in the given direction.
 pub fn create_conveyor(disp: Point, revealed: bool) -> Tile {

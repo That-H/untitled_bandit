@@ -81,6 +81,7 @@ pub fn gen_floor(
     map.insert_entity(pl, unsafe { PLAYER });
 
     let ice_prevalence = if EXTRA_ICE { 1.0 } else { 0.15 };
+
     // Generate the rooms of the map.
     let (mut grid, mut rooms) = map_gen::map_gen(
         ROOMS - SPECIAL_ROOMS + floor_num * 3,
@@ -110,8 +111,11 @@ pub fn gen_floor(
         &[0, exit_id],
     );
 
-    if crate::CHEATS { 
-        LOG_MSGS.write().unwrap().push(LogMsg::new(format!("Key door at {key_door}")));
+    if crate::CHEATS {
+        LOG_MSGS
+            .write()
+            .unwrap()
+            .push(LogMsg::new(format!("Key door at {key_door}")));
     }
 
     // Create some ice puzzles.
@@ -196,12 +200,7 @@ pub fn gen_floor(
         };
 
         let revealed = rooms[0].contains(pos);
-        let t = if rng.random_bool(0.0) && !blocking && door.is_none() {
-            create_conveyor(
-                *Point::ORIGIN.get_all_adjacent().choose(rng).unwrap(),
-                revealed,
-            )
-        } else if pos == key_pos {
+        let t = if pos == key_pos {
             get_key(false, floor_num)
         } else {
             Tile {
