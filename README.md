@@ -33,16 +33,23 @@ Enemies will try to do the same to the player, often moving towards them if the 
 An enemy may attack on its next turn if it is highlighted red, and not all enemies have the same attack pattern (tiles 
 relative to themself that they could perform an attack against on their turn). Some enemies may not attack every turn.
 
+### Puzzles
+
+Puzzles exist outside of the main game, and work slightly differently. During a puzzle, the player will have 1 hp,
+and must kill all enemies in the map. Then, they must go to the exit to complete the puzzle.
+
 ## Interface
 
 All of the game takes place on a single command prompt or terminal window. 
 Various windows will be displayed on this terminal window during gameplay, which are the following:
 
 - In the centre is the main game window.
+- While playing a puzzle, a small window displaying the puzzle number and difficulty will appear at the top of
+the screen.
 - In the top left are basic statistics, including current health, position, floor number, and turns completed.
 - Below the previous window is a window displaying the extent of the player's current attacks.
 - Below that window is a window displaying the current seed. This is necessary in case of a bug being found
-during gameplay.
+during gameplay. Not visible during puzzle gameplay.
 - In the top right corner, current held keys are displayed.
 - On the right of the main window, a log of attacks and major events is displayed, with timestamps.
 

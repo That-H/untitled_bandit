@@ -4,7 +4,6 @@ use crossterm::style::{self, Stylize};
 use dyn_clone::{DynClone, clone_trait_object};
 use rect::Rect;
 use std::fmt;
-use std::ops::{self, Deref};
 use std::sync::RwLock;
 
 // Whether cheats are enabled. Only possible in a debug build.

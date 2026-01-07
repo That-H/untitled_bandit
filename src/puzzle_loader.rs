@@ -21,9 +21,9 @@ pub enum Difficulty {
 impl fmt::Display for Difficulty {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", match *self {
-            Self::Beginner => 'B',
-            Self::Intermediate => 'I',
-            Self::Advanced => 'A',
+            Self::Beginner => "Beginner",
+            Self::Intermediate => "Intermediate",
+            Self::Advanced => "Advanced",
         })
     }
 }

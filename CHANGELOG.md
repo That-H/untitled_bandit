@@ -1,3 +1,18 @@
+# 0.7.4-alpha2
+Scrolling menus and more puzzles.
+
+## New Features
+- Improved the puzzle selection screen.
+    - Scrolling menu instead of static.
+    - Dividers between blocks of puzzles based on subjective difficulty.
+- Added five additional puzzles, one of which is advanced.
+
+# 0.7.4-alpha
+Puzzles.
+
+## New Features
+- Five puzzles accessible from the main menu for players to improve their efficiency.
+
 # 0.7.3-alpha
 MD5 hashing and a bug fix.
 

@@ -56,6 +56,9 @@ const DEBUG_WID: usize = 24;
 const SEED_WIN: usize = 6;
 const SEED_POS: Point = Point::new(13, 19);
 const SEED_WID: usize = 24;
+const PUZZLE_WIN: usize = 7;
+const PUZZLE_WID: usize = 16;
+const PUZZLE_POS: Point = Point::new(TERMINAL_WID as i32 / 2 - PUZZLE_WID as i32 / 2, 4);
 
 // Events for the ui.
 const QUIT: u32 = 0;
@@ -64,6 +67,7 @@ const QUICK_RESET: u32 = 2;
 const PLAY: u32 = 3;
 const PLAY_SEEDED: u32 = 4;
 const PUZZLE_SELECT: u32 = 5;
+const NEXT_PUZZLE: u32 = 6;
 
 // Seed.
 static mut SEED: u64 = 0xBB219F0909BD0E20;
@@ -372,6 +376,26 @@ fn main() {
 
                     cur_win.outline_with('#'.grey());
                 }
+            } else {
+                // Display just the seed.
+                cur_win = &mut win_cont.windows[PUZZLE_WIN];
+                cur_win.data.clear();
+
+                let cur_puz = unsafe { *PUZZLE.as_ref().unwrap() };
+                add_line(
+                    style::Color::White,
+                    &format!("{}", pzls[cur_puz].diff),
+                    cur_win,
+                    PUZZLE_WID,
+                );
+                add_line(
+                    style::Color::White,
+                    &format!("Puzzle {cur_puz}"),
+                    cur_win,
+                    PUZZLE_WID,
+                );
+
+                cur_win.outline_with('#'.grey());
             }
 
             win_cont.refresh();
@@ -601,40 +625,80 @@ fn main() {
         menu_container.add_scene(end_scene);
 
         // Puzzle selection screen.
-        let mut pzl_scene = ui::Scene::new(Point::new(51, 20), 18, pzl_count + 2);
+        let mut pzl_scene = ui::Scene::new(Point::new(51, 20), 18, 5)
+            .with_scrolling(true);
+
+        // Last seen difficulty during puzzle screen generation.
+        let mut last_diff = -1;
+
         for (n, pzl) in pzls.iter().enumerate() {
-            let pos = Point::new(1, n as i32 + 1);
+            let pos = Point::new(1, n as i32 + 2);
+            let mut screen_pos = pos + Point::new(0, last_diff);
             let strs = stars_earned[n];
             let str1 = if strs >= 1 { '*' } else { ' ' };
             let str2 = if strs >= 2 { '*' } else { ' ' };
+
+            // New difficulty block found
+            let this_diff = pzl.diff as i32;
+            if last_diff != this_diff {
+                last_diff = this_diff;
+                let clr = match this_diff {
+                    0 => style::Color::Green,
+                    1 => style::Color::Yellow,
+                    2 => style::Color::Red,
+                    d => panic!("Unexpected difficulty '{d}'"),
+                };
+                
+                pzl_scene.add_element(
+                    Box::new(
+                        basic_button
+                            .clone()
+                            .set_txt(format!("{}", pzl.diff))
+                            .set_clr(clr)
+                            .set_screen_pos(screen_pos)
+                    ), pos + Point::new(500, 5));
+                screen_pos.y += 1;
+            }
 
             pzl_scene.add_element(
                 Box::new(
                     basic_button
                         .clone()
-                        .set_txt(format!("Puzzle {n}: {} {str1}{str2}", pzl.diff))
+                        .set_txt(format!("Puzzle {} {str1}{str2}", n+1))
                         .set_event(ui::Event::Exit(n as u32 + 100))
-                        .set_screen_pos(pos)
+                        .set_screen_pos(screen_pos)
                 ), pos);
+
+            // Add a main menu button.
+            if n == pzls.len() - 1 {
+                pzl_scene.add_element(
+                    Box::new(
+                        basic_button
+                            .clone()
+                            .set_txt(String::from("Main Menu"))
+                            .set_event(ui::Event::ChangeScene(0))
+                            .set_screen_pos(screen_pos + Point::new(0, 2))
+                    ), pos + Point::new(0, 1));
+            }
         }
         pzl_scene.add_element(
             Box::new(ui::widgets::Outline::new('#'.grey(), 18)),
             Point::new(999, 999),
         );
 
-        pzl_scene.move_cursor(Point::new(1, 1));
+        pzl_scene.move_cursor(Point::new(1, 2));
 
         menu_container.add_scene(pzl_scene);
 
         // Alternate end screen for puzzles.
-        let mut puzzle_end = ui::Scene::new(Point::new(52, 18), 16, 6);
+        let mut puzzle_end = ui::Scene::new(Point::new(52, 18), 16, 7);
 
         puzzle_end.add_element(
             Box::new(
                 basic_button
                     .clone()
-                    .set_txt(String::from("Retry"))
-                    .set_event(ui::Event::Exit(QUICK_RESET))
+                    .set_txt(String::from("Next Puzzle"))
+                    .set_event(ui::Event::Exit(NEXT_PUZZLE))
                     .set_screen_pos(Point::new(1, 1)),
             ),
             Point::new(1, 1),
@@ -643,8 +707,8 @@ fn main() {
             Box::new(
                 basic_button
                     .clone()
-                    .set_txt(String::from("Puzzle Select"))
-                    .set_event(ui::Event::Exit(PUZZLE_SELECT))
+                    .set_txt(String::from("Retry"))
+                    .set_event(ui::Event::Exit(QUICK_RESET))
                     .set_screen_pos(Point::new(1, 2)),
             ),
             Point::new(1, 2),
@@ -653,8 +717,8 @@ fn main() {
             Box::new(
                 basic_button
                     .clone()
-                    .set_txt(String::from("Main Menu"))
-                    .set_event(ui::Event::Exit(MAIN_MENU))
+                    .set_txt(String::from("Puzzle Select"))
+                    .set_event(ui::Event::Exit(PUZZLE_SELECT))
                     .set_screen_pos(Point::new(1, 3)),
             ),
             Point::new(1, 3),
@@ -663,11 +727,21 @@ fn main() {
             Box::new(
                 basic_button
                     .clone()
-                    .set_txt(String::from("Quit"))
-                    .set_event(ui::Event::Exit(QUIT))
+                    .set_txt(String::from("Main Menu"))
+                    .set_event(ui::Event::Exit(MAIN_MENU))
                     .set_screen_pos(Point::new(1, 4)),
             ),
             Point::new(1, 4),
+        );
+        puzzle_end.add_element(
+            Box::new(
+                basic_button
+                    .clone()
+                    .set_txt(String::from("Quit"))
+                    .set_event(ui::Event::Exit(QUIT))
+                    .set_screen_pos(Point::new(1, 5)),
+            ),
+            Point::new(1, 5),
         );
         puzzle_end.add_element(
             Box::new(ui::widgets::Outline::new('#'.grey(), 16)),
@@ -725,6 +799,7 @@ fn main() {
         main_wins.add_win(windowed::Window::new(LOG_POS));
         main_wins.add_win(windowed::Window::new(DEBUG_POS));
         main_wins.add_win(windowed::Window::new(SEED_POS));
+        main_wins.add_win(windowed::Window::new(PUZZLE_POS));
 
         // Seed the rng.
         floor_rng = rand::rngs::SmallRng::seed_from_u64(unsafe { SEED });
@@ -1085,7 +1160,13 @@ fn main() {
             QUICK_RESET => quick_restart = true,
             // This is necessary to ensure the screen is reloaded.
             PUZZLE_SELECT => insta_puzzle = true,
-            // Puzzle selected.
+            NEXT_PUZZLE => unsafe {
+                let cur_puz = *PUZZLE.as_ref().unwrap();
+                if cur_puz != pzls.len() - 1 {
+                    quick_restart = true;
+                    PUZZLE = Some(cur_puz + 1);
+                }
+            }
             c if c >= 100 && c < 100 + pzl_count as u32 => {
                 unsafe { 
                     PUZZLE = Some(c as usize - 100);

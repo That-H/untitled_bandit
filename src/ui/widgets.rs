@@ -120,8 +120,8 @@ impl UiElement for Button {
         self.event.clone()
     }
 
-    fn display_into(&self, win: &mut windowed::Window<StyleCh>) {
-        put_text(&self.get_text(), win, self.screen_pos);
+    fn display_into(&self, win: &mut windowed::Window<StyleCh>, offset: Point) {
+        put_text(&self.get_text(), win, self.screen_pos + offset);
     }
 
     fn toggle_hover(&mut self) {
@@ -130,6 +130,10 @@ impl UiElement for Button {
 
     fn get_text(&self) -> String {
         self.txt.clone()
+    }
+
+    fn true_pos(&self) -> Point {
+        self.screen_pos
     }
 }
 
@@ -154,7 +158,7 @@ impl UiElement for Outline {
         Event::Null
     }
 
-    fn display_into(&self, win: &mut windowed::Window<StyleCh>) {
+    fn display_into(&self, win: &mut windowed::Window<StyleCh>, _offset: Point) {
         for row in &mut win.data {
             for _ in 0..self.wid - row.len() {
                 row.push(' '.stylize());
@@ -167,6 +171,10 @@ impl UiElement for Outline {
 
     fn priority(&self) -> i32 {
         i32::MAX
+    }
+
+    fn true_pos(&self) -> Point {
+        Point::new(1000, 1000)
     }
 }
 
@@ -319,17 +327,24 @@ impl UiElement for TextEntry {
         self.hover = !self.hover;
     }
 
-    fn display_into(&self, win: &mut windowed::Window<StyleCh>) {
-        put_text(&self.get_text(), win, self.screen_pos);
+    fn display_into(&self, win: &mut windowed::Window<StyleCh>, offset: Point) {
+        put_text(&self.get_text(), win, self.screen_pos + offset);
     }
 
     fn get_text(&self) -> String {
         self.txt.iter().collect()
     }
+
+    fn true_pos(&self) -> Point {
+        self.screen_pos
+    }
 }
 
 fn put_text(txt: &[StyleCh], win: &mut windowed::Window<StyleCh>, pos: Point) {
     let offset = pos.x as usize;
+    if pos.y < 0 || pos.y >= win.data.len() as i32 {
+        return;
+    }
 
     for (n, ch) in win.data[pos.y as usize].iter_mut().enumerate() {
         if n >= offset {

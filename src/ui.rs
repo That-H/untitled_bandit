@@ -14,8 +14,8 @@ pub mod widgets;
 
 /// Types that can be used as widgets in a UI window.
 pub trait UiElement {
-    /// Display the current element into the window.
-    fn display_into(&self, win: &mut windowed::Window<StyleCh>);
+    /// Display the current element into the window, given an offset.
+    fn display_into(&self, win: &mut windowed::Window<StyleCh>, offset: Point);
 
     /// Toggle whether this element is being hovered over.
     fn toggle_hover(&mut self);
@@ -41,6 +41,9 @@ pub trait UiElement {
     fn get_text(&self) -> String {
         String::new()
     }
+
+    /// Return the on screen position of this element.
+    fn true_pos(&self) -> Point;
 }
 
 /// Something that can occur when an element is activated.
@@ -63,6 +66,8 @@ pub struct Scene {
     win: windowed::Window<StyleCh>,
     wid: usize,
     hgt: usize,
+    scrolling: bool,
+    offset: Point,
 }
 
 impl Scene {
@@ -74,6 +79,16 @@ impl Scene {
             win: windowed::Window::new(top_left),
             wid,
             hgt,
+            scrolling: false,
+            offset: Point::ORIGIN,
+        }
+    }
+
+    /// Create a new scene with scrolling.
+    pub fn with_scrolling(self, scrolling: bool) -> Self {
+        Self {
+            scrolling,
+            ..self
         }
     }
 
@@ -92,17 +107,22 @@ impl Scene {
         self.elements.get(&pos)
     }
 
-    /// Move the cursor to the given position if there is an element there.
-    pub fn move_cursor(&mut self, new_pos: Point) {
+    /// Move the cursor to the given position if there is an element there. Returns true if it is
+    /// successful.
+    pub fn move_cursor(&mut self, new_pos: Point) -> bool {
         if self.try_hover(new_pos) {
             self.try_hover(self.cursor);
             self.cursor = new_pos;
+            true
+        } else {
+            false
         }
     }
 
-    /// Displace the cursor by the given vector if there is an element at the new position.
-    pub fn disp_cursor(&mut self, disp: Point) {
-        self.move_cursor(self.cursor + disp);
+    /// Displace the cursor by the given vector if there is an element at the new position. Returns
+    /// true if successful.
+    pub fn disp_cursor(&mut self, disp: Point) -> bool {
+        self.move_cursor(self.cursor + disp)
     }
 
     /// Draw the UI elements into the window.
@@ -122,7 +142,7 @@ impl Scene {
         elems.sort_by_key(|e| e.priority());
 
         for elem in elems {
-            elem.display_into(&mut self.win);
+            elem.display_into(&mut self.win, self.offset);
         }
     }
 
@@ -134,6 +154,18 @@ impl Scene {
             true
         } else {
             false
+        }
+    }
+    
+    /// Scroll the scene as well as move the cursor.
+    fn scrolling_move(&mut self, disp: Point) {
+        let old_true = self.get_element(self.cursor).unwrap().true_pos();
+
+        // If it works, do the scroll.
+        if self.disp_cursor(disp) {
+            let new_true = self.get_element(self.cursor).unwrap().true_pos();
+            let true_disp = new_true - old_true;
+            self.offset = self.offset - true_disp;
         }
     }
 }
@@ -148,6 +180,7 @@ enum Nav {
 pub struct UiContainer {
     /// All the scenes stored.
     pub scenes: Vec<Scene>,
+    /// Index of the scene currently in use.
     cur: usize,
 }
 
@@ -233,7 +266,11 @@ impl UiContainer {
 
                         match action {
                             Nav::Move(p) => {
-                                scene.disp_cursor(p);
+                                if scene.scrolling {
+                                    scene.scrolling_move(p);
+                                } else {
+                                    scene.disp_cursor(p);
+                                }
                             }
                             Nav::Activate => {
                                 let ev = scene
