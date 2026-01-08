@@ -1,3 +1,10 @@
+# 0.7.4-alpha3
+Save game and more puzzles.
+
+## New Features
+- 4 Additional puzzles, one of which is extreme.
+- Automatic saving of progress with puzzles.
+
 # 0.7.4-alpha2
 Scrolling menus and more puzzles.
 

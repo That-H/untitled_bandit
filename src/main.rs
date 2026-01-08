@@ -58,7 +58,7 @@ const SEED_POS: Point = Point::new(13, 19);
 const SEED_WID: usize = 24;
 const PUZZLE_WIN: usize = 7;
 const PUZZLE_WID: usize = 16;
-const PUZZLE_POS: Point = Point::new(TERMINAL_WID as i32 / 2 - PUZZLE_WID as i32 / 2, 4);
+const PUZZLE_POS: Point = Point::new(TERMINAL_WID as i32 / 2 - PUZZLE_WID as i32 / 2, 0);
 
 // Events for the ui.
 const QUIT: u32 = 0;
@@ -142,10 +142,19 @@ fn main() {
 
     // Add the floor.
     tile_set.add_tile(empty_t.clone());
+    // Add a slippery floor.
+    tile_set.add_tile(
+        Tile {
+            slippery: true,
+            ch: Some(ICE_CHAR.with(ICE_CLR)),
+            ..empty_t.clone()
+        }
+    );
 
+    // Load in the completion state of the puzzles.
+    let mut stars_earned = puzzle_loader::pzl_save::load_pzl_save();
     let pzls =
         puzzle_loader::load_pzls(this_path.join("puzzles.txt"), &empty_t, &tile_set).unwrap();
-    let mut stars_earned = vec![0; pzls.len()];
 
     let pzl_count = pzls.len();
 
@@ -469,7 +478,7 @@ fn main() {
         let mut menu_container = ui::UiContainer::new();
 
         // Main menu.
-        let mut scene = ui::Scene::new(Point::new(53, 20), 14, 6);
+        let mut scene = ui::Scene::new(Point::new(52, 20), 16, 6);
 
         let basic_button = ui::widgets::Button::empty_new()
             .set_selector(String::from(SELECTOR))
@@ -516,14 +525,14 @@ fn main() {
             Box::new(
                 basic_button
                     .clone()
-                    .set_txt(String::from("Quit"))
+                    .set_txt(String::from("Save and Quit"))
                     .set_event(ui::Event::Exit(QUIT))
                     .set_screen_pos(Point::new(1, 4)),
             ),
             Point::new(1, 4),
         );
         scene.add_element(
-            Box::new(ui::widgets::Outline::new('#'.grey(), 14)),
+            Box::new(ui::widgets::Outline::new('#'.grey(), 16)),
             Point::new(999, 999),
         );
         scene.move_cursor(Point::new(1, 1));
@@ -610,7 +619,7 @@ fn main() {
             Box::new(
                 basic_button
                     .clone()
-                    .set_txt(String::from("Quit"))
+                    .set_txt(String::from("Save and Quit"))
                     .set_event(ui::Event::Exit(QUIT))
                     .set_screen_pos(Point::new(1, 3)),
             ),
@@ -634,7 +643,7 @@ fn main() {
         for (n, pzl) in pzls.iter().enumerate() {
             let pos = Point::new(1, n as i32 + 2);
             let mut screen_pos = pos + Point::new(0, last_diff);
-            let strs = stars_earned[n];
+            let strs = if let Some(s) = stars_earned.get(&pzls[n].id) { *s } else { 0 };
             let str1 = if strs >= 1 { '*' } else { ' ' };
             let str2 = if strs >= 2 { '*' } else { ' ' };
 
@@ -646,6 +655,7 @@ fn main() {
                     0 => style::Color::Green,
                     1 => style::Color::Yellow,
                     2 => style::Color::Red,
+                    3 => style::Color::DarkRed,
                     d => panic!("Unexpected difficulty '{d}'"),
                 };
                 
@@ -737,7 +747,7 @@ fn main() {
             Box::new(
                 basic_button
                     .clone()
-                    .set_txt(String::from("Quit"))
+                    .set_txt(String::from("Save and Quit"))
                     .set_event(ui::Event::Exit(QUIT))
                     .set_screen_pos(Point::new(1, 5)),
             ),
@@ -1100,7 +1110,7 @@ fn main() {
                         2
                     }
                 };
-                stars_earned[idx] = std::cmp::max(stars_earned[idx], stars);
+                stars_earned.entry(pzls[idx].id).and_modify(|s| *s = std::cmp::max(*s, stars)).or_insert(stars);
                 let msg = match stars {
                     0 => "0 stars...",
                     1 => "1 star.",
@@ -1176,6 +1186,8 @@ fn main() {
             c => panic!("Unexpected code '{c}'"),
         }
     }
+
+    puzzle_loader::pzl_save::write_pzl_save(stars_earned);
 }
 
 fn clear_events() {

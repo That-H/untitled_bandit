@@ -10,12 +10,15 @@ use std::{
 
 pub mod ts;
 
+pub mod pzl_save;
+
 /// Represents the subjective difficulty of a puzzle.
 #[derive(Debug, Clone, Copy)]
 pub enum Difficulty {
     Beginner,
     Intermediate,
     Advanced,
+    Extreme,
 }
 
 impl fmt::Display for Difficulty {
@@ -24,6 +27,7 @@ impl fmt::Display for Difficulty {
             Self::Beginner => "Beginner",
             Self::Intermediate => "Intermediate",
             Self::Advanced => "Advanced",
+            Self::Extreme => "Extreme",
         })
     }
 }
@@ -36,6 +40,7 @@ impl FromStr for Difficulty {
             "B" => Self::Beginner,
             "I" => Self::Intermediate,
             "A" => Self::Advanced,
+            "E" => Self::Extreme,
             _ => return Err(()),
         })
     }
@@ -52,6 +57,8 @@ struct PuzzleBuilder {
     diff: Option<Difficulty>,
     /// Maximum number of moves allowed to complete the puzzle and get two stars.
     move_lim: Option<u32>,
+    /// Unique identifier of the puzzle.
+    id: Option<u128>,
 }
 
 impl PuzzleBuilder {
@@ -66,6 +73,7 @@ impl PuzzleBuilder {
             && self.pl_pos.is_some()
             && self.diff.is_some()
             && self.move_lim.is_some()
+            && self.id.is_some()
     }
 }
 
@@ -79,16 +87,19 @@ pub struct Puzzle {
     pub diff: Difficulty,
     /// Maximum number of moves allowed to complete the puzzle and get two stars.
     pub move_lim: u32,
+    /// Unique puzzle identifier.
+    pub id: u128,
 }
 
 impl Puzzle {
     /// Create an empty puzzle.
-    pub fn new(diff: Difficulty, move_lim: u32) -> Self {
+    pub fn new(diff: Difficulty, move_lim: u32, id: u128) -> Self {
         Self {
             data: bn::Map::new(50, 50),
             pl_pos: Point::ORIGIN,
             diff,
             move_lim,
+            id,
         }
     }
 }
@@ -103,6 +114,7 @@ impl TryFrom<PuzzleBuilder> for Puzzle {
                 pl_pos: value.pl_pos.unwrap(),
                 diff: value.diff.unwrap(),
                 move_lim: value.move_lim.unwrap(),
+                id: value.id.unwrap()
             })
         } else {
             Err(())
@@ -114,6 +126,7 @@ impl TryFrom<PuzzleBuilder> for Puzzle {
 fn create_map(data: &str, tile_set: &ts::TileSet, default_tile: &Tile) -> PuzzleBuilder {
     let mut map = bn::Map::new(69, 69);
     let mut builder = PuzzleBuilder::new();
+    builder.id.replace(u128::from_ne_bytes(md5::compute(data).0));
 
     for (y, ln) in data.lines().rev().enumerate() {
         for (x, ch) in ln.chars().enumerate() {
@@ -146,15 +159,15 @@ pub fn load_pzl(
     diff: Difficulty,
     move_lim: u32,
 ) -> Puzzle {
-    let mut pzl = Puzzle::new(diff, move_lim);
-
     let PuzzleBuilder {
         data,
         pl_pos,
+        id,
         diff: _diff,
         move_lim: _move_lim,
     } = create_map(data, tile_set, default_tile);
 
+    let mut pzl = Puzzle::new(diff, move_lim, id.unwrap());
     pzl.data = data.unwrap();
     pzl.pl_pos = pl_pos.unwrap();
     pzl
@@ -167,19 +180,18 @@ pub fn load_pzls<P: AsRef<std::path::Path>>(
     tile_set: &ts::TileSet,
 ) -> Result<Vec<Puzzle>, ()> {
     let mut pzls = Vec::new();
-    let file = fs::File::open(fname).unwrap();
     let mut state = 0;
     let mut data = String::new();
     let mut builder = PuzzleBuilder::new();
 
-    for line in io::BufReader::new(file).lines().map_while(Result::ok) {
+    for line in read_lines(fname).expect("Missing puzzles").map_while(Result::ok) {
         match state {
             // Read difficulty and move limit.
             0 => {
                 for (n, val) in line.split(' ').enumerate() {
                     match n {
                         0 => {
-                            builder.move_lim.replace(val.parse().map_err(|_e| ())?);
+                            builder.move_lim.replace(val.parse().unwrap_or(999));
                         }
                         1 => {
                             builder.diff.replace(val.parse().map_err(|_e| ())?);
@@ -214,4 +226,10 @@ pub fn load_pzls<P: AsRef<std::path::Path>>(
     }
 
     Ok(pzls)
+}
+
+/// Return a buffered reader over the lines of a file.
+pub fn read_lines<P: AsRef<std::path::Path>>(path: P) -> io::Result<io::Lines<io::BufReader<fs::File>>> {
+    let file = fs::File::open(path)?;
+    Ok(io::BufReader::new(file).lines())
 }
