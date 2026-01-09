@@ -152,9 +152,15 @@ fn main() {
     );
 
     // Load in the completion state of the puzzles.
-    let mut stars_earned = puzzle_loader::pzl_save::load_pzl_save();
+    let stars_read = puzzle_loader::pzl_save::load_pzl_save();
     let pzls =
         puzzle_loader::load_pzls(this_path.join("puzzles.txt"), &empty_t, &tile_set).unwrap();
+    let mut stars_earned = HashMap::new();
+    
+    // Discard any data about non existent puzzles.
+    for pzl in &pzls {
+        stars_earned.insert(pzl.id, if let Some(&hsh) = stars_read.get(&pzl.id) {hsh} else {0});
+    }
 
     let pzl_count = pzls.len();
 
@@ -1187,9 +1193,11 @@ fn main() {
         }
     }
 
+    // Write puzzle progress to file.
     puzzle_loader::pzl_save::write_pzl_save(stars_earned);
 }
 
+/// Clears all events currently in the queue.
 fn clear_events() {
     while let Ok(b) = event::poll(time::Duration::from_secs(0))
         && b

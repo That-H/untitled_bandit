@@ -345,7 +345,7 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
             .push(get_ring_attack(2, style::Color::Red, edge_dist, 10));
     }
 
-    fn go_furthest(map: &bn::Map<En>, _en: &En, _pos: Point) -> Vec<bn::Cmd<En>> {
+    fn _go_furthest(map: &bn::Map<En>, _en: &En, _pos: Point) -> Vec<bn::Cmd<En>> {
         let pl = unsafe { PLAYER };
         let mut max_dist = 0;
         let mut new_pos = Point::ORIGIN;

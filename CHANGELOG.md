@@ -1,3 +1,12 @@
+# 0.7.4-alpha4
+Puzzle tweaks.
+
+## New Features
+- Modified some puzzles where better solutions were found.
+
+## General Changes
+- Comletion data about no longer existing puzzles is automatically deleted.
+
 # 0.7.4-alpha3
 Save game and more puzzles.
 
