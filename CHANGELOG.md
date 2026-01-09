@@ -1,4 +1,4 @@
-# 0.7.4-alpha4
+# 0.7.4-beta
 Puzzle tweaks.
 
 ## New Features
