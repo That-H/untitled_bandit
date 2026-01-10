@@ -22,7 +22,7 @@ pub fn get_default_atks(
         clr,
         7,
         Vfx::new_opaque('?'.stylize(), 7),
-        chars.into_iter(),
+        chars,
     ))
 }
 
@@ -52,7 +52,7 @@ pub fn get_holiness(dmg: u32, duration: usize) -> AtkPat {
     let mut fx: Vec<(_, _)> = places
         .iter()
         .copied()
-        .zip(THICC_FOUR_POS_ATK.into_iter())
+        .zip(THICC_FOUR_POS_ATK)
         .map(|(p, ch)| (p, Vfx::new_opaque(ch.yellow(), duration)))
         .collect();
     places.push(Point::new(0, -2));
@@ -255,7 +255,7 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
         style::Color::Red,
         7,
         Vfx::new_opaque('?'.stylize(), 7),
-        EIGHT_POS_ATK.into_iter(),
+        EIGHT_POS_ATK,
     ));
 
     // Like diagonal_atks, but without the default_atks in it.
@@ -308,7 +308,7 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
         style::Color::Magenta,
         7,
         Vfx::new_opaque('?'.stylize(), 7),
-        FOUR_POS_ATK.into_iter(),
+        FOUR_POS_ATK,
     ));
 
     for (_d, atks) in wizardry.melee_atks.iter_mut() {

@@ -46,7 +46,7 @@ pub fn write_pzl_save(data: HashMap<u128, u8>) {
     let mut file = io::BufWriter::new(fs::File::create(get_pzl_path()).expect("Unable to write save file"));
 
     for (hash, stars) in data {
-        file.write(format!("{hash}:{stars}\n").as_bytes()).expect("Unable to write save file");
+        file.write_all(format!("{hash}:{stars}\n").as_bytes()).expect("Unable to write save file");
     }
 
     file.flush().expect("Unable to flush save file");

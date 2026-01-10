@@ -139,6 +139,7 @@ impl UiElement for Button {
 
 /// Creates an outline around the window. Position is arbitrary. Ensures the resulting window
 /// outline is rectangular.
+#[derive(Clone)]
 pub struct Outline {
     ch: StyleCh,
     wid: usize,

@@ -1,6 +1,7 @@
 //! Loads puzzle files and turns them into playable maps.
 
 use crate::*;
+use std::error::Error;
 use std::str::FromStr;
 use std::{
     fs,
@@ -178,13 +179,17 @@ pub fn load_pzls<P: AsRef<std::path::Path>>(
     fname: P,
     default_tile: &Tile,
     tile_set: &ts::TileSet,
-) -> Result<Vec<Puzzle>, ()> {
+) -> Result<Vec<Puzzle>, PzlLoadErr> {
     let mut pzls = Vec::new();
     let mut state = 0;
     let mut data = String::new();
     let mut builder = PuzzleBuilder::new();
 
-    for line in read_lines(fname).expect("Missing puzzles").map_while(Result::ok) {
+    for line in read_lines(fname).map_err(|e| match e.kind() {
+        io::ErrorKind::NotFound => PzlLoadErr::NotFound,
+        io::ErrorKind::ResourceBusy => PzlLoadErr::Cant(String::from("the file is already in use")),
+        e => PzlLoadErr::Other(e),
+    })?.map_while(Result::ok) {
         match state {
             // Read difficulty and move limit.
             0 => {
@@ -194,7 +199,7 @@ pub fn load_pzls<P: AsRef<std::path::Path>>(
                             builder.move_lim.replace(val.parse().unwrap_or(999));
                         }
                         1 => {
-                            builder.diff.replace(val.parse().map_err(|_e| ())?);
+                            builder.diff.replace(val.parse().map_err(|_e| PzlLoadErr::IncorrectFormat)?);
                         }
                         _ => break,
                     }
@@ -209,8 +214,8 @@ pub fn load_pzls<P: AsRef<std::path::Path>>(
                         &data,
                         default_tile,
                         tile_set,
-                        builder.diff.unwrap(),
-                        builder.move_lim.unwrap(),
+                        builder.diff.ok_or(PzlLoadErr::IncorrectFormat)?,
+                        builder.move_lim.ok_or(PzlLoadErr::IncorrectFormat)?,
                     );
                     pzls.push(pzl);
                     data = String::new();
@@ -233,3 +238,28 @@ pub fn read_lines<P: AsRef<std::path::Path>>(path: P) -> io::Result<io::Lines<io
     let file = fs::File::open(path)?;
     Ok(io::BufReader::new(file).lines())
 }
+
+/// An error that could occur during puzzle loading.
+#[derive(Debug, Clone)]
+pub enum PzlLoadErr {
+    NotFound,
+    IncorrectFormat,
+    Cant(String),
+    Other(io::ErrorKind),
+}
+
+impl Error for PzlLoadErr {}
+
+impl fmt::Display for PzlLoadErr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let txt = match self {
+            Self::NotFound => "The puzzle file could not be found",
+            Self::IncorrectFormat => "The puzzle file is formatted incorrectly",
+            Self::Cant(why) => &format!("Unable to load puzzle file because {why}"),
+            Self::Other(err) => &format!("Unable to load puzzle file because of {err}"),
+        };
+
+        write!(f, "{txt}")
+    }
+}
+

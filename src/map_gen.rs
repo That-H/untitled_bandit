@@ -36,11 +36,7 @@ impl Cell {
     }
 
     fn is_door(&self) -> bool {
-        if let &Cell::Door(_, _) = self {
-            true
-        } else {
-            false
-        }
+        matches!(self, &Cell::Door(_, _))
     }
 }
 
@@ -103,7 +99,7 @@ pub fn insert_rect(
 
 /// Turn the rect at the given index into an ice puzzle, if it has more than 1 door.
 pub fn ice_rect<R: Rng>(
-    rects: &mut Vec<Rect>,
+    rects: &mut [Rect],
     occupied: &mut HashMap<Point, Cell>,
     rng: &mut R,
     id: usize,
@@ -358,7 +354,7 @@ pub fn gen_rect_in<R: Rng>(
 
                     new_rect.expand(*dir);
 
-                    if let Some(id) = overlaps(&new_rect, &rects, &exempt) {
+                    if let Some(id) = overlaps(&new_rect, rects, &exempt) {
                         *allowed = false;
                         exempt.push(id);
                     }
@@ -398,7 +394,7 @@ pub fn map_gen<R: Rng>(
 
 /// Turns rooms at random into ice rooms.
 pub fn add_ice<R: Rng>(
-    rects: &mut Vec<Rect>,
+    rects: &mut [Rect],
     occupied: &mut HashMap<Point, Cell>,
     rng: &mut R,
     ice_prevalence: f64,

@@ -154,7 +154,10 @@ fn main() {
     // Load in the completion state of the puzzles.
     let stars_read = puzzle_loader::pzl_save::load_pzl_save();
     let pzls =
-        puzzle_loader::load_pzls(this_path.join("puzzles.txt"), &empty_t, &tile_set).unwrap();
+        match puzzle_loader::load_pzls(this_path.join("puzzles.txt"), &empty_t, &tile_set) {
+            Ok(pzls) => pzls,
+            Err(why) => panic!("{why}"),
+        };
     let mut stars_earned = HashMap::new();
     
     // Discard any data about non existent puzzles.
@@ -326,7 +329,7 @@ fn main() {
             add_line(style::Color::White, "LOG: ", cur_win, LOG_WID);
             let read = LOG_MSGS.read().unwrap();
             let len = read.len();
-            let start = if len < LOG_HGT { 0 } else { len - LOG_HGT };
+            let start = len.saturating_sub(LOG_HGT);
 
             for msg in LOG_MSGS.read().unwrap()[start..len].iter() {
                 add_line(style::Color::White, &msg.to_string(), cur_win, LOG_WID);
@@ -708,24 +711,24 @@ fn main() {
 
         // Alternate end screen for puzzles.
         let mut puzzle_end = ui::Scene::new(Point::new(52, 18), 16, 7);
+        let next = basic_button
+                .clone()
+                .set_txt(String::from("Next Puzzle"))
+                .set_event(ui::Event::Exit(NEXT_PUZZLE));
+        let retry = basic_button
+                .clone()
+                .set_txt(String::from("Retry"))
+                .set_event(ui::Event::Exit(QUICK_RESET));
 
         puzzle_end.add_element(
             Box::new(
-                basic_button
-                    .clone()
-                    .set_txt(String::from("Next Puzzle"))
-                    .set_event(ui::Event::Exit(NEXT_PUZZLE))
-                    .set_screen_pos(Point::new(1, 1)),
+                next.clone().set_screen_pos(Point::new(1, 1))
             ),
             Point::new(1, 1),
         );
         puzzle_end.add_element(
             Box::new(
-                basic_button
-                    .clone()
-                    .set_txt(String::from("Retry"))
-                    .set_event(ui::Event::Exit(QUICK_RESET))
-                    .set_screen_pos(Point::new(1, 2)),
+                retry.clone().set_screen_pos(Point::new(1, 2))
             ),
             Point::new(1, 2),
         );
@@ -763,9 +766,27 @@ fn main() {
             Box::new(ui::widgets::Outline::new('#'.grey(), 16)),
             Point::new(999, 999),
         );
+
+        // End screen if the player dies in a puzzle. Gives the option to retry at the top instead.
+        let mut dead_puzzle_end = puzzle_end.clone();
+        dead_puzzle_end.add_element(
+            Box::new(
+                retry.set_screen_pos(Point::new(1, 1))
+            ),
+            Point::new(1, 1)
+        );
+        dead_puzzle_end.add_element(
+            Box::new(
+                next.set_screen_pos(Point::new(1, 2))
+            ),
+            Point::new(1, 2)
+        );
+
         puzzle_end.move_cursor(Point::new(1, 1));
+        dead_puzzle_end.move_cursor(Point::new(1, 1));
 
         menu_container.add_scene(puzzle_end);
+        menu_container.add_scene(dead_puzzle_end);
 
         if insta_puzzle {
             menu_container.change_scene(3);
@@ -1109,12 +1130,10 @@ fn main() {
                 let idx = *PUZZLE.as_ref().unwrap();
                 let stars = if DEAD {
                     0
+                } else if turns > pzls[idx].move_lim {
+                    1
                 } else {
-                    if turns > pzls[idx].move_lim {
-                        1
-                    } else {
-                        2
-                    }
+                    2
                 };
                 stars_earned.entry(pzls[idx].id).and_modify(|s| *s = std::cmp::max(*s, stars)).or_insert(stars);
                 let msg = match stars {
@@ -1169,7 +1188,15 @@ fn main() {
         end_wins.refresh();
         print_win(&end_wins);
 
-        menu_container.change_scene(if is_puzzle { 4 } else { 2 });
+        menu_container.change_scene(if is_puzzle { 
+            if unsafe { DEAD } {
+                5
+            } else {
+                4
+            }
+        } else {
+            2
+        });
         match menu_container.run() {
             QUIT => break 'full,
             MAIN_MENU => (),

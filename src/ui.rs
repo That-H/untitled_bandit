@@ -7,13 +7,14 @@ use crossterm::{cursor, event, queue, style};
 use std::collections::HashMap;
 use std::io::{self, Write};
 use style::Stylize;
+use dyn_clone::{DynClone, clone_trait_object};
 
 type StyleCh = style::StyledContent<char>;
 
 pub mod widgets;
 
 /// Types that can be used as widgets in a UI window.
-pub trait UiElement {
+pub trait UiElement: DynClone {
     /// Display the current element into the window, given an offset.
     fn display_into(&self, win: &mut windowed::Window<StyleCh>, offset: Point);
 
@@ -46,6 +47,8 @@ pub trait UiElement {
     fn true_pos(&self) -> Point;
 }
 
+clone_trait_object!{UiElement}
+
 /// Something that can occur when an element is activated.
 #[derive(Clone, Debug)]
 pub enum Event {
@@ -60,6 +63,7 @@ pub enum Event {
 }
 
 /// Contains some UI elements. For use with a UiContainer.
+#[derive(Clone)]
 pub struct Scene {
     elements: HashMap<Point, Box<dyn UiElement>>,
     cursor: Point,
@@ -102,9 +106,14 @@ impl Scene {
         self.elements.insert(pos, elem);
     }
 
+    /// Removes and returns the UiElement at pos if there is one.
+    pub fn remove_element(&mut self, pos: Point) -> Option<Box<dyn UiElement>> {
+        self.elements.remove(&pos)
+    }
+
     /// Returns a reference to the element at the given position in the scene.
-    pub fn get_element(&self, pos: Point) -> Option<&Box<dyn UiElement>> {
-        self.elements.get(&pos)
+    pub fn get_element(&self, pos: Point) -> Option<&dyn UiElement> {
+        self.elements.get(&pos).map(|v| &**v)
     }
 
     /// Move the cursor to the given position if there is an element there. Returns true if it is
@@ -177,6 +186,7 @@ enum Nav {
 }
 
 /// Contains various scenes that can be navigated between. Handles key presses.
+#[derive(Clone, Default)]
 pub struct UiContainer {
     /// All the scenes stored.
     pub scenes: Vec<Scene>,

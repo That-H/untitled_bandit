@@ -1,3 +1,11 @@
+# 0.7.4-beta2
+Internal improvements.
+
+## General Changes 
+- Made a more informative error message appear if the puzzles file is unable to be read for some reason.
+- Made the retry button appear at the top of the menu if the player dies during a puzzle. Otherwise 'next puzzle'
+is the top option.
+
 # 0.7.4-beta
 Puzzle tweaks.
 
