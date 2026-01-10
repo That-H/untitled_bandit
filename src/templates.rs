@@ -198,8 +198,24 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
         p2.rotate_90_cw_ip();
     }
 
+    fn get_manhattan_n(n: i32) -> Vec<Point> {
+        Point::ORIGIN.get_all_adjacent().iter().map(|&p| p * n).collect()
+    }
+
     // Manhattan movement.
     let manhattan = Point::ORIGIN.get_all_adjacent();
+
+    // Manhattan movement exactly two tiles in the same direction.
+    let manhattan2: Vec<Point> = get_manhattan_n(2);
+    
+    // Manhattan movement exactly 3 tiles in the same direction.
+    let manhattan3: Vec<Point> = get_manhattan_n(3);
+
+    // Manhattan movement 2 or 3 tiles in the same direction.
+    let mut manhattan23 = manhattan3.clone();
+    for &p in manhattan2.iter() {
+        manhattan23.push(p);
+    }
 
     // Diagonal movement 1 tile.
     let mut diag = manhattan.clone();
@@ -481,6 +497,20 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
             EntityTemplate {
                 max_hp: 3,
                 actions: vec![
+                    ActionType::Pathfind,
+                    ActionType::Pathfind,
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    )
+                ],
+                movement: manhattan2.clone(),
+                ch: 'r'.stylize(),
+                atks: default_atks.clone(),
+            },
+            EntityTemplate {
+                max_hp: 3,
+                actions: vec![
                     ActionType::Wait,
                     ActionType::Chain(
                         Box::new(ActionType::TryMelee),
@@ -576,6 +606,23 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 movement: manhattan.clone(),
                 ch: 'E'.stylize(),
                 atks: default_atks.clone(),
+            },
+            EntityTemplate {
+                max_hp: 4,
+                actions: vec![
+                    ActionType::Wait,
+                    ActionType::Multi(
+                        Box::new(ActionType::Pathfind),
+                        Box::new(ActionType::TryMelee),
+                    ),
+                    ActionType::Multi(
+                        Box::new(ActionType::Pathfind),
+                        Box::new(ActionType::TryMelee),
+                    ),
+                ],
+                movement: manhattan23.clone(),
+                ch: 'R'.stylize(),
+                atks: spear.clone(),
             },
             EntityTemplate {
                 max_hp: 3,

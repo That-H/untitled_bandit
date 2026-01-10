@@ -508,6 +508,14 @@ impl bn::Entity for En {
                             acted = true;
                         }
                     }
+                    ActionType::Jump(idx) => {
+                        (pos, acted, new_count) = handle_action.borrow()(
+                            cur_en.actions[idx].clone(),
+                            cmd,
+                            cur_en,
+                            pos,
+                        );
+                    }
                     ActionType::CondBranch(idx_t, idx_f, clos) => {
                         let nx_idx = if clos(&*cmd, self, pos) { idx_t } else { idx_f };
                         (pos, acted, new_count) = handle_action.borrow()(

@@ -399,7 +399,7 @@ fn main() {
                 cur_win = &mut win_cont.windows[PUZZLE_WIN];
                 cur_win.data.clear();
 
-                let cur_puz = unsafe { *PUZZLE.as_ref().unwrap() };
+                let cur_puz = unsafe { *PUZZLE.as_ref().unwrap() } + 1;
                 add_line(
                     style::Color::White,
                     &format!("{}", pzls[cur_puz].diff),

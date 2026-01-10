@@ -159,7 +159,7 @@ pub fn load_pzl(
     tile_set: &ts::TileSet,
     diff: Difficulty,
     move_lim: u32,
-) -> Puzzle {
+) -> Result<Puzzle, PzlLoadErr> {
     let PuzzleBuilder {
         data,
         pl_pos,
@@ -169,9 +169,15 @@ pub fn load_pzl(
     } = create_map(data, tile_set, default_tile);
 
     let mut pzl = Puzzle::new(diff, move_lim, id.unwrap());
-    pzl.data = data.unwrap();
-    pzl.pl_pos = pl_pos.unwrap();
-    pzl
+    pzl.data = match data {
+        Some(d) => d,
+        None => return Err(PzlLoadErr::IncorrectFormat(String::from("Puzzle contains no data"))),
+    };
+    pzl.pl_pos = match pl_pos {
+        Some(p) => p,
+        None => return Err(PzlLoadErr::IncorrectFormat(String::from("Puzzle contains no player"))),
+    };
+    Ok(pzl)
 }
 
 /// Takes a file and loads all puzzles from it, assuming the file is stored in the correct format.
@@ -199,7 +205,7 @@ pub fn load_pzls<P: AsRef<std::path::Path>>(
                             builder.move_lim.replace(val.parse().unwrap_or(999));
                         }
                         1 => {
-                            builder.diff.replace(val.parse().map_err(|_e| PzlLoadErr::IncorrectFormat)?);
+                            builder.diff.replace(val.parse().map_err(|_e| PzlLoadErr::IncorrectFormat(format!("invalid difficulty '{val}'")))?);
                         }
                         _ => break,
                     }
@@ -214,9 +220,9 @@ pub fn load_pzls<P: AsRef<std::path::Path>>(
                         &data,
                         default_tile,
                         tile_set,
-                        builder.diff.ok_or(PzlLoadErr::IncorrectFormat)?,
-                        builder.move_lim.ok_or(PzlLoadErr::IncorrectFormat)?,
-                    );
+                        builder.diff.ok_or(PzlLoadErr::IncorrectFormat(String::from("No difficulty set for puzzle")))?,
+                        builder.move_lim.ok_or(PzlLoadErr::IncorrectFormat(String::from("No move limit set for puzzle")))?,
+                    )?;
                     pzls.push(pzl);
                     data = String::new();
                     builder = PuzzleBuilder::new();
@@ -243,7 +249,7 @@ pub fn read_lines<P: AsRef<std::path::Path>>(path: P) -> io::Result<io::Lines<io
 #[derive(Debug, Clone)]
 pub enum PzlLoadErr {
     NotFound,
-    IncorrectFormat,
+    IncorrectFormat(String),
     Cant(String),
     Other(io::ErrorKind),
 }
@@ -254,7 +260,7 @@ impl fmt::Display for PzlLoadErr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let txt = match self {
             Self::NotFound => "The puzzle file could not be found",
-            Self::IncorrectFormat => "The puzzle file is formatted incorrectly",
+            Self::IncorrectFormat(why) => &format!("The puzzle file is formatted incorrectly ({why})"),
             Self::Cant(why) => &format!("Unable to load puzzle file because {why}"),
             Self::Other(err) => &format!("Unable to load puzzle file because of {err}"),
         };

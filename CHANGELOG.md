@@ -1,3 +1,13 @@
+# 0.8.2-alpha
+Extra enemies and puzzles.
+
+## New Features
+- Letter r enemy.
+- Letter R boss.
+- +1 intermediate puzzle.
+- +3 advanced puzzles.
+- +1 extreme puzzle.
+
 # 0.8.1
 Hotfix for death/win screen menu.
 
@@ -140,8 +150,8 @@ Adds ice puzzles, end screens, and a new boss.
 This update mainly adds new enemies and a win condition.
 
 ## New Features
-- Added the O boss to floor 1. It attacks any tile exactly two king moves away
-- Added the letter g, which moves and attacks like a king. Waits every third turn
+- Added the O boss to floor 1. It attacks any tile exactly two king moves away.
+- Added the letter g, which moves and attacks like a king. Waits every third turn.
 - Pseudo win screen (if you exit Floor 3, it says 'You win!')
 
 ## General Changes

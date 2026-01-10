@@ -263,6 +263,8 @@ pub enum ActionType {
     Multi(Box<ActionType>, Box<ActionType>),
     /// Does the first action, and if it fails, does the second one.
     Chain(Box<ActionType>, Box<ActionType>),
+    /// Invariably moves the action idx and does the action there.
+    Jump(usize),
     /// Does the action at the first idx given if the predicate evaluates to true,
     /// otherwise does the action at the other idx given.
     /// As arguments, the predicate takes the current map, the entity currently acting,

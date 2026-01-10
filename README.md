@@ -38,6 +38,27 @@ relative to themself that they could perform an attack against on their turn). S
 Puzzles exist outside of the main game, and work slightly differently. During a puzzle, the player will have 1 hp,
 and must kill all enemies in the map. Then, they must go to the exit to complete the puzzle.
 
+#### Stars
+
+Players get 1 star for completing a puzzle, and 2 stars for completing the puzzle optimally (or at least in less moves 
+than the best solution I could find).
+
+#### Difficulty
+
+Puzzles are ordered by approximate subjective difficulty into four categories:
+
+##### Beginner
+Easy to complete and fairly easy to get two stars.
+
+##### Intermediate
+Fairly easy to complete and somewhat difficult to get two stars.
+
+##### Advanced
+Difficult to complete and very difficult to get two stars.
+
+##### Extreme
+Very difficult to complete and even more so to get two stars.
+
 ## Interface
 
 All of the game takes place on a single command prompt or terminal window. 
