@@ -602,7 +602,7 @@ fn main() {
         menu_container.add_scene(seed_scene);
 
         // Death / win_screen.
-        let mut end_scene = ui::Scene::new(Point::new(54, 21), 12, 5);
+        let mut end_scene = ui::Scene::new(Point::new(52, 21), 16, 5);
 
         end_scene.add_element(
             Box::new(
@@ -635,7 +635,7 @@ fn main() {
             Point::new(1, 3),
         );
         end_scene.add_element(
-            Box::new(ui::widgets::Outline::new('#'.grey(), 12)),
+            Box::new(ui::widgets::Outline::new('#'.grey(), 16)),
             Point::new(999, 999),
         );
         end_scene.move_cursor(Point::new(1, 1));

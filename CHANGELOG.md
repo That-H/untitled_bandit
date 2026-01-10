@@ -1,3 +1,9 @@
+# 0.8.1
+Hotfix for death/win screen menu.
+
+## Regression Fixes
+- Made the window on the death/win screen large enough to fit the save and quit button.
+
 # 0.8.0
 Large update adding puzzles with progress saving.
 
