@@ -1,3 +1,14 @@
+# 0.8.0
+Large update adding puzzles with progress saving.
+
+## New Features 
+- 15 Puzzles ranging in difficulty from beginner to extreme.
+- A save and quit button that saves progress with puzzles.
+- A scrolling puzzle selection menu.
+
+## Regression Fixes
+- Fixed maps occasionally being generated that are impossible to complete.
+
 # 0.7.4-beta2
 Internal improvements.
 
