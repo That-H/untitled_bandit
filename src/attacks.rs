@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 pub const THICC_FOUR_POS_ATK: [char; 4] = ['═', '║', '═', '║'];
 pub const FOUR_POS_ATK: [char; 4] = ['-', '|', '-', '|'];
-pub const EIGHT_POS_ATK: [char; 8] = ['/', '-', '\\', '|', '|', '\\', '-', '/'];
+pub const EIGHT_POS_ATK: [char; 8] = ['╱', '-', '╲', '|', '|', '╲', '-', '╱'];
 
 mod damage;
 pub use damage::*;

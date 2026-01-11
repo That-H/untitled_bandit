@@ -93,7 +93,11 @@ fn main() {
 
     // Raw mode required for windowed to work correctly.
     terminal::enable_raw_mode();
-    execute!(io::stdout(), terminal::Clear(terminal::ClearType::All));
+    execute!(
+        io::stdout(),
+        terminal::Clear(terminal::ClearType::All),
+        terminal::SetSize(TERMINAL_WID, TERMINAL_HGT),
+    );
 
     // Get entity templates.
     let meta = templates::metadata::get_metadata();
@@ -474,7 +478,7 @@ fn main() {
                     style::Color::White,
                     line,
                     &mut main_menu_cont.windows[0],
-                    128,
+                    TERMINAL_WID as usize,
                 );
                 main_menu_cont.refresh();
                 print_win(&main_menu_cont);
@@ -1118,22 +1122,21 @@ fn main() {
 
         let turns = unsafe { GLOBAL_TIME };
         // In game time taken.
-        add_line(
-            style::Color::White,
-            &format!("Turns: {}", turns,),
-            cur_win,
-            main_wid,
-        );
+        let mut turn_msg = format!("Turns: {}", turns);
         
         if is_puzzle {
             unsafe { 
                 let idx = *PUZZLE.as_ref().unwrap();
+                let move_lim = pzls[idx].move_lim;
                 let stars = if DEAD {
                     0
-                } else if turns > pzls[idx].move_lim {
-                    1
                 } else {
-                    2
+                    turn_msg = format!("{turn_msg}/{move_lim}");
+                    if turns > move_lim {
+                        1
+                    } else {
+                        2
+                    }
                 };
                 stars_earned.entry(pzls[idx].id).and_modify(|s| *s = std::cmp::max(*s, stars)).or_insert(stars);
                 let msg = match stars {
@@ -1151,6 +1154,13 @@ fn main() {
             }
         }
 
+        add_line(
+            style::Color::White,
+            &turn_msg,
+            cur_win,
+            main_wid,
+        );
+
         if !is_puzzle {
             // Floor reached.
             add_line(
@@ -1159,9 +1169,7 @@ fn main() {
                 cur_win,
                 main_wid,
             );
-        }
 
-        if !is_puzzle {
             // Enemies killed.
             add_line(
                 style::Color::White,
@@ -1169,9 +1177,7 @@ fn main() {
                 cur_win,
                 main_wid,
             );
-        }
 
-        if !is_puzzle {
             // Seed used.
             add_line(
                 style::Color::White,
@@ -1222,6 +1228,16 @@ fn main() {
 
     // Write puzzle progress to file.
     puzzle_loader::pzl_save::write_pzl_save(stars_earned);
+
+    // Put the terminal in a "normal" state in case the player actually wants to use it afterwards.
+    terminal::disable_raw_mode();
+    execute!(
+        io::stdout(),
+        terminal::Clear(terminal::ClearType::All),
+        cursor::MoveTo(0, 0),
+        cursor::Show,
+    );
+
 }
 
 /// Clears all events currently in the queue.

@@ -1,8 +1,33 @@
 # 0.8.2-alpha2
-Hotfix for the last hotfix that made things worse overall.
+Hotfix for the last hotfix that turned into a minor content update.
+
+## New Features 
+- New puzzles:
+    - +1 beginner
+    - +2 intermediate
+    - +2 advanced
+- Moved puzzles:
+    - 1 advanced -> intermediate
+- Letter q enemy.
+- Letter Q boss.
 
 ## Regression Fixes
 - Fixed a crash caused by trying to play the last puzzle.
+
+## General Changes
+- Made the appearance of diagonal attacks slightly more prominent.
+- Upon clearing a puzzle, the number of moves of the best known solution is displayed.
+
+## Balance Changes
+- Moved R to floor 0.
+- Rebalanced r as it isn't as powerful as previously thought.
+    - Floor range 2-3 -> 1-2
+    - Cost 35 -> 27
+
+## Compatability
+- Automatically resizes the terminal at the start of the game.
+- Leaves the terminal in a more normal state after quitting (disables raw mode, clears the screen,
+moves the cursor to the top left corner).
 
 # 0.8.2-alpha
 Extra enemies and puzzles.

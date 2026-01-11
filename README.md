@@ -40,7 +40,7 @@ and must kill all enemies in the map. Then, they must go to the exit to complete
 
 #### Stars
 
-Players get 1 star for completing a puzzle, and 2 stars for completing the puzzle optimally (or at least in less moves 
+Players get 1 star for completing a puzzle, and 2 stars for completing the puzzle optimally (or at least in less moves
 than the best solution I could find).
 
 #### Difficulty
@@ -54,7 +54,7 @@ Easy to complete and fairly easy to get two stars.
 Fairly easy to complete and somewhat difficult to get two stars.
 
 ##### Advanced
-Difficult to complete and very difficult to get two stars.
+Generally difficult to complete and very difficult to get two stars.
 
 ##### Extreme
 Very difficult to complete and even more so to get two stars.

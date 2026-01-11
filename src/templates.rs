@@ -8,6 +8,7 @@ use rand::prelude::IndexedRandom;
 pub const PLAYER_CHARACTER: char = '@';
 pub const PLAYER_COLOUR: style::Color = style::Color::Green;
 pub const RING_CHARS: [char; 6] = ['╔', '═', '╗', '║', '╝', '╚'];
+pub const DIAG_CHARS: [char; 4] = ['╱', '╲', '╱', '╲'];
 
 pub mod metadata;
 
@@ -107,6 +108,39 @@ pub fn get_ring_attack(dmg: u32, clr: style::Color, edge_dist: i32, duration: us
         }
     }
     atk
+}
+
+/// Generate attacks that affect tiles length diagonal moves in the same direction away. Affects
+/// all tiles along the diagonal up to length if incl is true.
+pub fn get_diag_atks(dmg: u32, clr: style::Color, length: i32, duration: usize, incl: bool) -> AtkPat {
+    let mut atk_pat = AtkPat::empty();
+    let mut dir = Point::new(1, 1);
+
+    for i in 0..4 {
+        let mut place = Vec::new();
+        let mut fx = Vec::new();
+
+        for l in 1..=length {
+            let dir = dir * l;
+            if l == length || incl {
+                place.push(dir);
+            }
+            fx.push((
+                dir,
+                Vfx::opaque_with_clr(DIAG_CHARS[i], clr, duration),
+            ));
+        }
+
+        let atk = MeleeAtk::new(
+            vec![Effect::DoDmg(DmgInst::dmg(dmg, 1.0))],
+            place,
+            fx,
+            Vfx::opaque_with_clr('?', style::Color::White, duration),
+        );
+        atk_pat.melee_atks.insert(dir, vec![atk]);
+        dir.rotate_90_cw_ip();
+    }
+    atk_pat
 }
 
 /// Creates the player entity.
@@ -233,6 +267,13 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
     // Manhattan movement with diagonal.
     let total = Point::ORIGIN.get_all_adjacent_diagonal();
 
+    // Movement of the q enemy.
+    let mut queen_move = total.clone();
+
+    for &p in total.iter() {
+        queen_move.push(p * 2);
+    }
+
     // All moves with a manhattan distance of 2.
     let mut viking_move = total.clone();
     for p in manhattan.iter() {
@@ -275,10 +316,7 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
     ));
 
     // Like diagonal_atks, but without the default_atks in it.
-    let mut pure_diag_atks = diagonal_atks.clone();
-    for p in Point::ORIGIN.get_all_adjacent() {
-        pure_diag_atks.melee_atks.remove(&p);
-    }
+    let pure_diag_atks = get_diag_atks(1, style::Color::Red, 1, 8, false);
 
     // Long default attack.
     let mut spear = default_atks.clone();
@@ -564,6 +602,18 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 ch: 'g'.stylize(),
                 atks: diagonal_atks.clone(),
             },
+            EntityTemplate {
+                max_hp: 1,
+                actions: vec![
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                ],
+                movement: queen_move.clone(),
+                ch: 'q'.stylize(),
+                atks: spear.clone(),
+            },
         ],
         // Capitals start here.
         vec![
@@ -581,6 +631,20 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 movement: diag_plus.clone(),
                 ch: 'B'.stylize(),
                 atks: get_holiness(3, 15),
+            },
+            EntityTemplate {
+                max_hp: 2,
+                actions: vec![
+                    ActionType::Pathfind,
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                    ActionType::Wait,
+                ],
+                movement: queen_move.clone(),
+                ch: 'Q'.stylize(),
+                atks: get_diag_atks(2, style::Color::Red, 2, 8, false),
             },
             EntityTemplate {
                 max_hp: 5,

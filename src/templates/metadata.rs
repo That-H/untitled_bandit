@@ -56,9 +56,9 @@ pub fn get_metadata() -> HashMap<char, TempMeta> {
         (
             'r',
             TempMeta {
-                cost: 35,
-                floor_rang: 2..=3,
-                max: 1,
+                cost: 27,
+                floor_rang: 1..=2,
+                max: 3,
             },
         ),
         (
@@ -94,6 +94,16 @@ pub fn get_metadata() -> HashMap<char, TempMeta> {
             },
         ),
         (
+            'q',
+            TempMeta {
+                // cost: 70,
+                cost: 15,
+                // floor_rang: 3..=3,
+                floor_rang: 0..=0,
+                max: 1,
+            },
+        ),
+        (
             'O',
             TempMeta {
                 cost: 50,
@@ -103,6 +113,14 @@ pub fn get_metadata() -> HashMap<char, TempMeta> {
         ),
         (
             'B',
+            TempMeta {
+                cost: 50,
+                floor_rang: 2..=2,
+                max: 1,
+            },
+        ),
+        (
+            'Q',
             TempMeta {
                 cost: 50,
                 floor_rang: 2..=2,
@@ -121,7 +139,7 @@ pub fn get_metadata() -> HashMap<char, TempMeta> {
             'R',
             TempMeta {
                 cost: 50,
-                floor_rang: 1..=1,
+                floor_rang: 0..=0,
                 max: 1,
             },
         ),
