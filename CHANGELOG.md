@@ -1,3 +1,9 @@
+# 0.8.2-alpha2
+Hotfix for the last hotfix that made things worse overall.
+
+## Regression Fixes
+- Fixed a crash caused by trying to play the last puzzle.
+
 # 0.8.2-alpha
 Extra enemies and puzzles.
 
@@ -7,6 +13,9 @@ Extra enemies and puzzles.
 - +1 intermediate puzzle.
 - +3 advanced puzzles.
 - +1 extreme puzzle.
+
+## Regression Fixes
+- Fixed the mismatch between the puzzle number displayed while playing a puzzle and when selecting one.
 
 # 0.8.1
 Hotfix for death/win screen menu.

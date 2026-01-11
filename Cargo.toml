@@ -1,6 +1,6 @@
 [package]
 name = "untitled_bandit"
-version = "0.8.2-alpha"
+version = "0.8.2-alpha2"
 edition = "2024"
 
 [dependencies]
