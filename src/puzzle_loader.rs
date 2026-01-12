@@ -159,7 +159,7 @@ pub fn load_pzl(
     tile_set: &ts::TileSet,
     diff: Difficulty,
     move_lim: u32,
-) -> Result<Puzzle, PzlLoadErr> {
+) -> Result<Puzzle, LoadErr> {
     let PuzzleBuilder {
         data,
         pl_pos,
@@ -171,11 +171,11 @@ pub fn load_pzl(
     let mut pzl = Puzzle::new(diff, move_lim, id.unwrap());
     pzl.data = match data {
         Some(d) => d,
-        None => return Err(PzlLoadErr::IncorrectFormat(String::from("Puzzle contains no data"))),
+        None => return Err(LoadErr::IncorrectFormat(String::from("Puzzle contains no data"))),
     };
     pzl.pl_pos = match pl_pos {
         Some(p) => p,
-        None => return Err(PzlLoadErr::IncorrectFormat(String::from("Puzzle contains no player"))),
+        None => return Err(LoadErr::IncorrectFormat(String::from("Puzzle contains no player"))),
     };
     Ok(pzl)
 }
@@ -185,16 +185,16 @@ pub fn load_pzls<P: AsRef<std::path::Path>>(
     fname: P,
     default_tile: &Tile,
     tile_set: &ts::TileSet,
-) -> Result<Vec<Puzzle>, PzlLoadErr> {
+) -> Result<Vec<Puzzle>, LoadErr> {
     let mut pzls = Vec::new();
     let mut state = 0;
     let mut data = String::new();
     let mut builder = PuzzleBuilder::new();
 
     for line in read_lines(fname).map_err(|e| match e.kind() {
-        io::ErrorKind::NotFound => PzlLoadErr::NotFound,
-        io::ErrorKind::ResourceBusy => PzlLoadErr::Cant(String::from("the file is already in use")),
-        e => PzlLoadErr::Other(e),
+        io::ErrorKind::NotFound => LoadErr::NotFound,
+        io::ErrorKind::ResourceBusy => LoadErr::Cant(String::from("the file is already in use")),
+        e => LoadErr::Other(e),
     })?.map_while(Result::ok) {
         match state {
             // Read difficulty and move limit.
@@ -205,7 +205,7 @@ pub fn load_pzls<P: AsRef<std::path::Path>>(
                             builder.move_lim.replace(val.parse().unwrap_or(999));
                         }
                         1 => {
-                            builder.diff.replace(val.parse().map_err(|_e| PzlLoadErr::IncorrectFormat(format!("invalid difficulty '{val}'")))?);
+                            builder.diff.replace(val.parse().map_err(|_e| LoadErr::IncorrectFormat(format!("invalid difficulty '{val}'")))?);
                         }
                         _ => break,
                     }
@@ -220,8 +220,8 @@ pub fn load_pzls<P: AsRef<std::path::Path>>(
                         &data,
                         default_tile,
                         tile_set,
-                        builder.diff.ok_or(PzlLoadErr::IncorrectFormat(String::from("No difficulty set for puzzle")))?,
-                        builder.move_lim.ok_or(PzlLoadErr::IncorrectFormat(String::from("No move limit set for puzzle")))?,
+                        builder.diff.ok_or(LoadErr::IncorrectFormat(String::from("No difficulty set for puzzle")))?,
+                        builder.move_lim.ok_or(LoadErr::IncorrectFormat(String::from("No move limit set for puzzle")))?,
                     )?;
                     pzls.push(pzl);
                     data = String::new();
@@ -247,22 +247,22 @@ pub fn read_lines<P: AsRef<std::path::Path>>(path: P) -> io::Result<io::Lines<io
 
 /// An error that could occur during puzzle loading.
 #[derive(Debug, Clone)]
-pub enum PzlLoadErr {
+pub enum LoadErr {
     NotFound,
     IncorrectFormat(String),
     Cant(String),
     Other(io::ErrorKind),
 }
 
-impl Error for PzlLoadErr {}
+impl Error for LoadErr {}
 
-impl fmt::Display for PzlLoadErr {
+impl fmt::Display for LoadErr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let txt = match self {
-            Self::NotFound => "The puzzle file could not be found",
-            Self::IncorrectFormat(why) => &format!("The puzzle file is formatted incorrectly ({why})"),
-            Self::Cant(why) => &format!("Unable to load puzzle file because {why}"),
-            Self::Other(err) => &format!("Unable to load puzzle file because of {err}"),
+            Self::NotFound => "The file could not be found",
+            Self::IncorrectFormat(why) => &format!("The file is formatted incorrectly ({why})"),
+            Self::Cant(why) => &format!("Unable to load file because {why}"),
+            Self::Other(err) => &format!("Unable to load file because of {err}"),
         };
 
         write!(f, "{txt}")

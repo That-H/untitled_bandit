@@ -1,3 +1,23 @@
+# 0.8.2-alpha3
+Adds scoring and other stats.
+
+## New Features
+- New end screen statistics:
+    - Damage dealt over the course of the run (not visible if a puzzle was played)
+    - Combat efficiency (amount of damage dealt divided by time in combat)
+    - Score (based on enemies killed, floor reached, combat efficiency, turns taken)
+- High score saving
+
+## New Content
+- New puzzles:
+- Moved puzzles:
+    - 2 advanced -> intermediate
+
+## Balance Changes
+- Slightly changed the order in which the letter g tries each adjacent tile to make it
+less oppressive.
+- Moved R to floor 1 as it is noticeably more difficult than E.
+
 # 0.8.2-alpha2
 Hotfix for the last hotfix that turned into a minor content update.
 

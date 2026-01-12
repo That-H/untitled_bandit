@@ -55,6 +55,7 @@ pub mod ui;
 pub mod tile_presets;
 
 pub mod puzzle_loader;
+pub mod save_file;
 
 pub mod datum;
 pub use datum::Datum;

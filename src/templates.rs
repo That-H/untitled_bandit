@@ -264,14 +264,41 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
         diag_plus.push(*p * 3);
     }
 
+    // Default attack pattern.
+    let default_atks = get_default_atks(1, FOUR_POS_ATK, style::Color::Red);
+
+    // Long default attack.
+    let mut spear = default_atks.clone();
+
+    for (_d, atks) in spear.melee_atks.iter_mut() {
+        for atk in atks.iter_mut() {
+            let pos = atk.place[0];
+            atk.fx
+                .push((pos * 2, Vfx::new_opaque(DIR_CHARS[pos.dir()].red(), 7)));
+            for p in atk.place.iter_mut() {
+                *p = *p * 2;
+            }
+        }
+    }
+
     // Manhattan movement with diagonal.
     let total = Point::ORIGIN.get_all_adjacent_diagonal();
+    let fair_total: Vec<Point> = Rect::new(-1, 1, 3, 3).edges().collect();
 
     // Movement of the q enemy.
     let mut queen_move = total.clone();
 
     for &p in total.iter() {
         queen_move.push(p * 2);
+    }
+
+    // Attacks of the q enemy.
+    let mut queen_attack = get_diag_atks(2, style::Color::Red, 2, 8, false);
+
+    for (&dir, atks) in spear.melee_atks.iter() {
+        queen_attack
+            .melee_atks
+            .insert(dir, vec![atks[0].clone()]);
     }
 
     // All moves with a manhattan distance of 2.
@@ -297,9 +324,6 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
         vec![get_ring_attack(2, style::Color::Red, 2, 9)],
     );
 
-    // Default attack pattern.
-    let default_atks = get_default_atks(1, FOUR_POS_ATK, style::Color::Red);
-
     // Functionally identical to default attacks, but looks different.
     let weird_default = get_default_atks(1, ['☼'; 4], style::Color::Magenta);
 
@@ -317,20 +341,6 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
 
     // Like diagonal_atks, but without the default_atks in it.
     let pure_diag_atks = get_diag_atks(1, style::Color::Red, 1, 8, false);
-
-    // Long default attack.
-    let mut spear = default_atks.clone();
-
-    for (_d, atks) in spear.melee_atks.iter_mut() {
-        for atk in atks.iter_mut() {
-            let pos = atk.place[0];
-            atk.fx
-                .push((pos * 2, Vfx::new_opaque(DIR_CHARS[pos.dir()].red(), 7)));
-            for p in atk.place.iter_mut() {
-                *p = *p * 2;
-            }
-        }
-    }
 
     // Viking movement as an attack pattern.
     let mut viking_atk = diagonal_atks.clone();
@@ -352,9 +362,10 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 if PLAYER == to {
                     PLAYER = new;
                 }
-                if map.get_ent(new).is_some() {
+                if let Some(e) = map.get_ent(new) {
                     ENEMIES_REMAINING -= 1;
                     KILLED += 1;
+                    DAMAGE_DEALT += *e.hp;
                 }
             }
             vec![bn::Cmd::new_on(to).move_to(new)]
@@ -598,7 +609,7 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                         Box::new(ActionType::Pathfind),
                     ),
                 ],
-                movement: total.clone(),
+                movement: fair_total.clone(),
                 ch: 'g'.stylize(),
                 atks: diagonal_atks.clone(),
             },
@@ -635,16 +646,14 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
             EntityTemplate {
                 max_hp: 2,
                 actions: vec![
-                    ActionType::Pathfind,
                     ActionType::Chain(
                         Box::new(ActionType::TryMelee),
                         Box::new(ActionType::Pathfind),
                     ),
-                    ActionType::Wait,
                 ],
                 movement: queen_move.clone(),
                 ch: 'Q'.stylize(),
-                atks: get_diag_atks(2, style::Color::Red, 2, 8, false),
+                atks: queen_attack.clone(),
             },
             EntityTemplate {
                 max_hp: 5,

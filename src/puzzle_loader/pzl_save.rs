@@ -52,9 +52,14 @@ pub fn write_pzl_save(data: HashMap<u128, u8>) {
     file.flush().expect("Unable to flush save file");
 }
 
+/// Get the path to the save directory.
+pub fn get_save_path() -> std::path::PathBuf {
+    directories::ProjectDirs::from(QUAL, ORGANISATION, APP).unwrap().data_local_dir().to_path_buf()
+}
+
 // Get the path to the puzzle save file.
 fn get_pzl_path() -> std::path::PathBuf {
-    let pro_dirs = directories::ProjectDirs::from(QUAL, ORGANISATION, APP).unwrap();
+    let pro_dirs = get_save_path();
 
-    pro_dirs.data_local_dir().join(PZLS_FILE)
+    pro_dirs.join(PZLS_FILE)
 }

@@ -23,6 +23,10 @@ pub static mut ENEMIES_REMAINING: usize = 0;
 pub static mut KILLED: u32 = 0;
 /// Number of actions taken by the player.
 pub static mut GLOBAL_TIME: u32 = 0;
+/// Number of actions taken by the player while there are still enemies alive.
+pub static mut COMBAT_TIME: u32 = 0;
+/// Points of damage dealt to enemies.
+pub static mut DAMAGE_DEALT: u32 = 0;
 /// Number of floors cleared.
 pub static mut FLOORS_CLEARED: u32 = 0;
 /// True when the floor should be regenerated.
@@ -178,9 +182,15 @@ impl En {
             }
             DmgType::Dmg(d) => {
                 if d > *self.hp {
+                    unsafe {
+                        DAMAGE_DEALT += *self.hp;
+                    }
                     self.hp.set_to(0);
                     true
                 } else {
+                    unsafe {
+                        DAMAGE_DEALT += d;
+                    }
                     self.hp -= d;
                     false
                 }
@@ -672,8 +682,14 @@ impl bn::Entity for En {
                 bn::Cmd::new_here().modify_entity(Box::new(move |e: &mut En| {
                     if stop {
                         e.vel = None;
-                    } else if e.is_player {
-                        unsafe { GLOBAL_TIME += 1 }
+                    } 
+                    if e.is_player {
+                        unsafe { 
+                            GLOBAL_TIME += 1;
+                            if ENEMIES_REMAINING > 0 {
+                                COMBAT_TIME += 1;
+                            }
+                        }
                     }
                     e.acted = true;
                 })),
@@ -690,7 +706,12 @@ impl bn::Entity for En {
         // Increase global time if player, otherwise set the flag to prevent multi actions.
         if acted || !self.is_player {
             if self.is_player {
-                unsafe { GLOBAL_TIME += 1 }
+                unsafe { 
+                    GLOBAL_TIME += 1;
+                    if ENEMIES_REMAINING > 0 {
+                        COMBAT_TIME += 1;
+                    }
+                }
                 // Prevents enemies from being allowed to act if we just walked in.
                 if unsafe { ENEMIES_REMAINING != 0 } {
                     update_entities(cmd);

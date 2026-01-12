@@ -168,8 +168,16 @@ fn main() {
     for pzl in &pzls {
         stars_earned.insert(pzl.id, if let Some(&hsh) = stars_read.get(&pzl.id) {hsh} else {0});
     }
-
     let pzl_count = pzls.len();
+
+    // Load high score.
+    let mut high_score = match save_file::load_highscore() {
+        Ok(score) => score,
+        Err(why) => match why {
+            puzzle_loader::LoadErr::NotFound => 0.0,
+            _ => panic!("{why}"),
+        },
+    };
 
     // Contains additional metadata about each enemy type.
     let mut handle = std::io::stdout();
@@ -436,6 +444,8 @@ fn main() {
         unsafe {
             PLAYER = Point::ORIGIN;
             GLOBAL_TIME = 0;
+            COMBAT_TIME = 0;
+            DAMAGE_DEALT = 0;
 
             // Give a lot of keys on a debug build.
             let key_count = if CHEATS { 9 } else { 0 };
@@ -606,7 +616,7 @@ fn main() {
         menu_container.add_scene(seed_scene);
 
         // Death / win_screen.
-        let mut end_scene = ui::Scene::new(Point::new(52, 21), 16, 5);
+        let mut end_scene = ui::Scene::new(Point::new(52, 22), 16, 5);
 
         end_scene.add_element(
             Box::new(
@@ -1103,12 +1113,13 @@ fn main() {
             print_win(&end_wins);
             thread::sleep(delay);
         }
-
         clear_events();
-        let cur_win = &mut end_wins.windows[1];
 
+        let cur_win = &mut end_wins.windows[1];
         add_line(style::Color::White, "", cur_win, main_wid);
+
         let is_puzzle = unsafe { PUZZLE.is_some() };
+
 
         if !is_puzzle {
             // Real time taken.
@@ -1178,6 +1189,46 @@ fn main() {
                 main_wid,
             );
 
+        }
+
+        // Efficiency.
+        let cmb_efficiency = unsafe {
+            DAMAGE_DEALT as f64 / if is_puzzle { GLOBAL_TIME } else { COMBAT_TIME } as f64
+        };
+        let msg = if is_puzzle {
+            "Efficiency"
+        } else {
+            "Combat Efficiency"
+        };
+        add_line(
+            style::Color::White,
+            &format!("{msg}: {:.3}", cmb_efficiency),
+            cur_win,
+            main_wid,
+        );
+
+        if !is_puzzle {
+            let score = unsafe {
+                (FLOORS_CLEARED * 100 + KILLED).saturating_sub(GLOBAL_TIME / 50) 
+            } as f64 * cmb_efficiency;
+
+            let old_high = high_score;
+            high_score = f64::max(score, high_score);
+            let mut score_msg = format!("Score: {score:.2}");
+            if old_high != high_score {
+                score_msg = format!("{score_msg} (New Highscore!)");
+            } else {
+                score_msg = format!("{score_msg} (Best: {high_score:.2})");
+            }
+
+            // Score.
+            add_line(
+                style::Color::White,
+                &score_msg,
+                cur_win,
+                main_wid,
+            );
+
             // Seed used.
             add_line(
                 style::Color::White,
@@ -1228,6 +1279,9 @@ fn main() {
 
     // Write puzzle progress to file.
     puzzle_loader::pzl_save::write_pzl_save(stars_earned);
+
+    // Write high_score to file.
+    save_file::save_highscore(high_score);
 
     // Put the terminal in a "normal" state in case the player actually wants to use it afterwards.
     terminal::disable_raw_mode();
