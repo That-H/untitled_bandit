@@ -112,11 +112,17 @@ pub fn get_ring_attack(dmg: u32, clr: style::Color, edge_dist: i32, duration: us
 
 /// Generate attacks that affect tiles length diagonal moves in the same direction away. Affects
 /// all tiles along the diagonal up to length if incl is true.
-pub fn get_diag_atks(dmg: u32, clr: style::Color, length: i32, duration: usize, incl: bool) -> AtkPat {
+pub fn get_diag_atks(
+    dmg: u32,
+    clr: style::Color,
+    length: i32,
+    duration: usize,
+    incl: bool,
+) -> AtkPat {
     let mut atk_pat = AtkPat::empty();
     let mut dir = Point::new(1, 1);
 
-    for i in 0..4 {
+    for &ch in &DIAG_CHARS {
         let mut place = Vec::new();
         let mut fx = Vec::new();
 
@@ -125,10 +131,7 @@ pub fn get_diag_atks(dmg: u32, clr: style::Color, length: i32, duration: usize, 
             if l == length || incl {
                 place.push(dir);
             }
-            fx.push((
-                dir,
-                Vfx::opaque_with_clr(DIAG_CHARS[i], clr, duration),
-            ));
+            fx.push((dir, Vfx::opaque_with_clr(ch, clr, duration)));
         }
 
         let atk = MeleeAtk::new(
@@ -233,7 +236,11 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
     }
 
     fn get_manhattan_n(n: i32) -> Vec<Point> {
-        Point::ORIGIN.get_all_adjacent().iter().map(|&p| p * n).collect()
+        Point::ORIGIN
+            .get_all_adjacent()
+            .iter()
+            .map(|&p| p * n)
+            .collect()
     }
 
     // Manhattan movement.
@@ -241,7 +248,7 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
 
     // Manhattan movement exactly two tiles in the same direction.
     let manhattan2: Vec<Point> = get_manhattan_n(2);
-    
+
     // Manhattan movement exactly 3 tiles in the same direction.
     let manhattan3: Vec<Point> = get_manhattan_n(3);
 
@@ -296,9 +303,7 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
     let mut queen_attack = get_diag_atks(2, style::Color::Red, 2, 8, false);
 
     for (&dir, atks) in spear.melee_atks.iter() {
-        queen_attack
-            .melee_atks
-            .insert(dir, vec![atks[0].clone()]);
+        queen_attack.melee_atks.insert(dir, vec![atks[0].clone()]);
     }
 
     // All moves with a manhattan distance of 2.
@@ -551,7 +556,7 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                     ActionType::Chain(
                         Box::new(ActionType::TryMelee),
                         Box::new(ActionType::Pathfind),
-                    )
+                    ),
                 ],
                 movement: manhattan2.clone(),
                 ch: 'r'.stylize(),
@@ -615,12 +620,10 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
             },
             EntityTemplate {
                 max_hp: 1,
-                actions: vec![
-                    ActionType::Chain(
-                        Box::new(ActionType::TryMelee),
-                        Box::new(ActionType::Pathfind),
-                    ),
-                ],
+                actions: vec![ActionType::Chain(
+                    Box::new(ActionType::TryMelee),
+                    Box::new(ActionType::Pathfind),
+                )],
                 movement: queen_move.clone(),
                 ch: 'q'.stylize(),
                 atks: spear.clone(),
@@ -645,12 +648,10 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
             },
             EntityTemplate {
                 max_hp: 2,
-                actions: vec![
-                    ActionType::Chain(
-                        Box::new(ActionType::TryMelee),
-                        Box::new(ActionType::Pathfind),
-                    ),
-                ],
+                actions: vec![ActionType::Chain(
+                    Box::new(ActionType::TryMelee),
+                    Box::new(ActionType::Pathfind),
+                )],
                 movement: queen_move.clone(),
                 ch: 'Q'.stylize(),
                 atks: queen_attack.clone(),

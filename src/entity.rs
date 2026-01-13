@@ -7,6 +7,7 @@ use crate::bn;
 use attacks::*;
 use bn::Entity;
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::fmt;
 use std::rc::Rc;
 use std::sync::RwLock;
@@ -175,6 +176,13 @@ impl En {
     /// Applies the given given damage instance to this entity. Returns whether
     /// or not it is still alive.
     pub fn apply_dmg(&mut self, dmg: DmgInst) -> bool {
+        let can_count = if !self.is_player
+            && let Special::Not = self.special
+        {
+            true
+        } else {
+            false
+        };
         match dmg.dmg {
             DmgType::Heal(h) => {
                 self.hp += h;
@@ -182,16 +190,16 @@ impl En {
             }
             DmgType::Dmg(d) => {
                 if d > *self.hp {
-                    unsafe {
-                        if !self.is_player {
+                    if can_count {
+                        unsafe {
                             DAMAGE_DEALT += *self.hp;
                         }
                     }
                     self.hp.set_to(0);
                     true
                 } else {
-                    unsafe {
-                        if !self.is_player {
+                    if can_count {
+                        unsafe {
                             DAMAGE_DEALT += d;
                         }
                     }
@@ -523,12 +531,8 @@ impl bn::Entity for En {
                         }
                     }
                     ActionType::Jump(idx) => {
-                        (pos, acted, new_count) = handle_action.borrow()(
-                            cur_en.actions[idx].clone(),
-                            cmd,
-                            cur_en,
-                            pos,
-                        );
+                        (pos, acted, new_count) =
+                            handle_action.borrow()(cur_en.actions[idx].clone(), cmd, cur_en, pos);
                     }
                     ActionType::CondBranch(idx_t, idx_f, clos) => {
                         let nx_idx = if clos(&*cmd, self, pos) { idx_t } else { idx_f };
@@ -579,7 +583,7 @@ impl bn::Entity for En {
                         && let Some(t) = cmd.get_map(pos)
                     {
                         // Door check.
-                        if let Some((room1, room2)) = &t.door {
+                        if t.door {
                             // Record the door we just entered.
                             let mut write = LAST_DOOR.write().unwrap();
                             let mut should_write = true;
@@ -601,22 +605,40 @@ impl bn::Entity for En {
                                 write.replace(pos);
                             }
 
-                            let rect = if room1.contains(nx) { room1 } else { room2 };
                             let mut doors = Vec::new();
                             // Flag to say whether or not we are locking all the doors due to
                             // an enemy being detected in the room.
                             let mut dooring = false;
 
-                            // Iterate over all cells of the room and reveal them.
-                            for p in rect.cells() {
-                                cmd.queue(
-                                    bn::Cmd::new_on(p)
-                                        .modify_tile(Box::new(|t: &mut Tile| t.revealed = true)),
-                                );
+                            // Stack of positions to reveal.
+                            let mut rev_stack = vec![nx];
+                            let mut revd = HashSet::new();
+
+                            // Reveal all cells of the room via floodfill.
+                            while let Some(p) = rev_stack.pop() {
+                                if let Some(cl) = cmd.get_map(p) {
+                                    // Already visited to ignore.
+                                    if revd.contains(&p) {
+                                        continue;
+                                    } else {
+                                        // Push adjacent cells if this one is eligible.
+                                        if !cl.blocking && !cl.door {
+                                            for adj in p.get_all_adjacent_diagonal() {
+                                                rev_stack.push(adj);
+                                            }
+                                        }
+
+                                        // Do the revealing.
+                                        cmd.queue(bn::Cmd::new_on(p).modify_tile(Box::new(
+                                            |t: &mut Tile| t.revealed = true,
+                                        )));
+                                        revd.insert(p);
+                                    }
+                                }
 
                                 // Mark the position for locking if it is a door.
                                 if let Some(t) = cmd.get_map(p)
-                                    && t.door.is_some()
+                                    && t.door
                                 {
                                     doors.push(p);
                                 }
@@ -686,9 +708,9 @@ impl bn::Entity for En {
                 bn::Cmd::new_here().modify_entity(Box::new(move |e: &mut En| {
                     if stop {
                         e.vel = None;
-                    } 
+                    }
                     if e.is_player {
-                        unsafe { 
+                        unsafe {
                             GLOBAL_TIME += 1;
                             if ENEMIES_REMAINING > 0 {
                                 COMBAT_TIME += 1;
@@ -710,7 +732,7 @@ impl bn::Entity for En {
         // Increase global time if player, otherwise set the flag to prevent multi actions.
         if acted || !self.is_player {
             if self.is_player {
-                unsafe { 
+                unsafe {
                     GLOBAL_TIME += 1;
                     if ENEMIES_REMAINING > 0 {
                         COMBAT_TIME += 1;

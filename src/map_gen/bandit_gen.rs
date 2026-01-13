@@ -95,11 +95,7 @@ pub fn gen_floor(
 
     // Generate a new room specifically for the boss.
     let true_door = map_gen::gen_rect_in(&mut rooms, &mut grid, rng, MIN_WIDTH, MAX_WIDTH, &[0]);
-
-    map.insert_tile(
-        get_exit(false, floor_num as usize),
-        rooms.last().unwrap().top_left() + Point::new(2, -2),
-    );
+    let mut exit_pos = rooms.last().unwrap().top_left();
 
     // Generate a new room specifically for the key.
     let key_door = map_gen::gen_rect_in(
@@ -118,8 +114,35 @@ pub fn gen_floor(
             .push(LogMsg::new(format!("Key door at {key_door}")));
     }
 
+    let rm_len = rooms.len();
+
     // Create some ice puzzles.
-    map_gen::add_ice(&mut rooms, &mut grid, rng, ice_prevalence);
+    map_gen::add_ice(
+        &mut rooms,
+        &mut grid,
+        rng,
+        ice_prevalence,
+        // Do not touch the key room.
+        &[rm_len - 1],
+    );
+
+    // Find a suitable position for the exit.
+    loop {
+        if let Some(cl) = grid.get(&exit_pos)
+            && let Cell::Inner(_) = cl 
+            && exit_pos.get_all_adjacent().into_iter().all(|p| if let Some(cl) = grid.get(&p) && cl.is_door() { false } else { true })
+        {
+            break;
+        } else {
+            exit_pos = exit_pos + Point::new(1, -1);
+        }
+    }
+
+    // Place the exit tile.
+    map.insert_tile(
+        get_exit(false, floor_num as usize),
+        exit_pos
+    );
 
     // Generate enemies.
     for (n, r) in rooms.iter().enumerate().skip(1) {
@@ -171,7 +194,7 @@ pub fn gen_floor(
     for (&pos, cl) in grid.iter() {
         let blocking;
         let mut slippery = false;
-        let mut door = None;
+        let mut door = false;
 
         // If there is already a tile there, don't overwrite it.
         if map.get_map(pos).is_some() {
@@ -192,9 +215,9 @@ pub fn gen_floor(
                 slippery = true;
                 Some(ICE_CHAR.on(ICE_CLR))
             }
-            map_gen::Cell::Door(id1, id2) => {
+            map_gen::Cell::Door(_id1, _id2) => {
                 blocking = false;
-                door = Some((rooms[*id1], rooms[*id2]));
+                door = true;
                 Some(DOOR_CHAR.with(get_door_clr()))
             }
         };

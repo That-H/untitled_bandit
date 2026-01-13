@@ -86,8 +86,8 @@ pub struct Tile {
     pub revealed: bool,
     /// Character used to represent this tile.
     pub ch: Option<StyleCh>,
-    /// The rooms the tile connects.
-    pub door: Option<(Rect, Rect)>,
+    /// Whether or not this is a door.
+    pub door: bool,
     /// Key type required to change this tile to not be blocking.
     pub locked: Option<u32>,
     /// Whether the tile engages sliding.
@@ -139,7 +139,7 @@ impl Default for Tile {
             blocking: false,
             revealed: false,
             ch: None,
-            door: None,
+            door: false,
             slippery: false,
             step_effect: None,
             locked: None,

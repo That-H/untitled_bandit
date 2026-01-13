@@ -4,10 +4,10 @@ use crate::Point;
 use crate::bn;
 use bn::windowed;
 use crossterm::{cursor, event, queue, style};
+use dyn_clone::{DynClone, clone_trait_object};
 use std::collections::HashMap;
 use std::io::{self, Write};
 use style::Stylize;
-use dyn_clone::{DynClone, clone_trait_object};
 
 type StyleCh = style::StyledContent<char>;
 
@@ -47,7 +47,7 @@ pub trait UiElement: DynClone {
     fn true_pos(&self) -> Point;
 }
 
-clone_trait_object!{UiElement}
+clone_trait_object! {UiElement}
 
 /// Something that can occur when an element is activated.
 #[derive(Clone, Debug)]
@@ -90,10 +90,7 @@ impl Scene {
 
     /// Create a new scene with scrolling.
     pub fn with_scrolling(self, scrolling: bool) -> Self {
-        Self {
-            scrolling,
-            ..self
-        }
+        Self { scrolling, ..self }
     }
 
     /// Add a new element to the container. Automatically hovers it if that is where the cursor
@@ -165,7 +162,7 @@ impl Scene {
             false
         }
     }
-    
+
     /// Scroll the scene as well as move the cursor.
     fn scrolling_move(&mut self, disp: Point) {
         let old_true = self.get_element(self.cursor).unwrap().true_pos();

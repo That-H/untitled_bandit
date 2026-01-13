@@ -96,4 +96,3 @@ impl<T: Clone + PartialOrd> ops::Deref for Datum<T> {
         }
     }
 }
-

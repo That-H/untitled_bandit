@@ -3,7 +3,7 @@
 use crate::Point;
 use rand::{Rng, prelude::*};
 use rect::Rect;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 pub mod bandit_gen;
 
@@ -37,6 +37,10 @@ impl Cell {
 
     fn is_door(&self) -> bool {
         matches!(self, &Cell::Door(_, _))
+    }
+
+    fn is_wall(&self) -> bool {
+        matches!(self, &Cell::Wall(_))
     }
 }
 
@@ -112,9 +116,11 @@ pub fn ice_rect<R: Rng>(
 
     // Make sure the edges are all solid in the rect.
     for p in rect.edges() {
-        tiles.insert(p, true);
-        if occupied[&p].is_door() {
-            doors.push(p);
+        if let Some(cl) = occupied.get(&p) {
+            tiles.insert(p, true);
+            if cl.is_door() {
+                doors.push(p);
+            }
         }
     }
 
@@ -226,17 +232,18 @@ pub fn ice_rect<R: Rng>(
     }
 
     for (p, t) in tiles {
-        let cl = occupied.get_mut(&p).unwrap();
-        match cl {
-            Cell::Inner(cell_id) => {
-                *cl = if t {
-                    // Have to use a sentinel value to prevent rooms from generating along it.
-                    Cell::Wall(vec![65536])
-                } else {
-                    Cell::Ice(*cell_id)
+        if let Some(cl) = occupied.get_mut(&p) {
+            match cl {
+                Cell::Inner(cell_id) => {
+                    *cl = if t {
+                        // Have to use a sentinel value to prevent rooms from generating along it.
+                        Cell::Wall(vec![65536])
+                    } else {
+                        Cell::Ice(*cell_id)
+                    }
                 }
+                _ => continue,
             }
-            _ => continue,
         }
     }
 }
@@ -392,16 +399,74 @@ pub fn map_gen<R: Rng>(
     (occupied, rects)
 }
 
-/// Turns rooms at random into ice rooms.
+/// Turns rooms at random into ice rooms. Cuts the corners of the other rooms.
 pub fn add_ice<R: Rng>(
     rects: &mut [Rect],
     occupied: &mut HashMap<Point, Cell>,
     rng: &mut R,
     ice_prevalence: f64,
+    illegal_hosts: &[usize],
 ) {
     for id in 1..rects.len() {
-        if rng.random_bool(ice_prevalence) {
-            ice_rect(rects, occupied, rng, id, 0.3, 0);
+        if illegal_hosts.contains(&id) {
+            continue;
         }
+        if rng.random_bool(ice_prevalence) {
+            ice_rect(rects, occupied, rng, id, 0.25, 0);
+        } else {
+            cut_corners(&rects[id], occupied, rng);
+        }
+    }
+}
+
+/// Cut the corners off of a room.
+pub fn cut_corners<R: Rng>(rect: &Rect, occupied: &mut HashMap<Point, Cell>, rng: &mut R) {
+    // Cut a specific wall and make necessary surrounding walls.
+    let slash = |p: Point, occupied: &mut HashMap<Point, Cell>| {
+        occupied.remove(&p);
+        for adj in p.get_all_adjacent_diagonal() {
+            match occupied.get_mut(&adj) {
+                Some(cl) => match cl {
+                    Cell::Inner(inner_id) => *cl = Cell::Wall(vec![*inner_id]),
+                    _ => continue,
+                },
+                None => continue,
+            }
+        }
+    };
+
+    // Tiles marked for getting chopped.
+    let mut marked = VecDeque::from(rect.corners());
+    let mut iters = 0;
+
+    // Tiles to be checked relative to one about to be slashed.
+    let mut relevant = Point::ORIGIN.get_all_adjacent_diagonal();
+    for p in Rect::new(-2, 2, 5, 5).edges() {
+        relevant.push(p);
+    }
+
+    while let Some(mrk) = marked.pop_front() {
+        iters += 1;
+        let mut denom = iters / 2;
+        if denom == 0 {
+            denom = 1;
+        }
+        let prolif = rng.random_ratio(1, denom);
+        if prolif {
+            if relevant.iter().all(|&p| {
+                if let Some(cl) = occupied.get(&(p + mrk)) && cl.is_door() {
+                    false
+                } else {
+                    true
+                }
+            }) {
+                slash(mrk, occupied);
+                for p in mrk.get_all_adjacent() {
+                    if let Some(cl) = occupied.get(&p) && cl.is_wall() {
+                        marked.push_back(p);
+                    }
+                }
+            }
+        } 
     }
 }

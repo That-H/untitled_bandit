@@ -28,7 +28,7 @@ pub fn create_conveyor(disp: Point, revealed: bool) -> Tile {
         empt: false,
         revealed,
         slippery: false,
-        door: None,
+        door: false,
         step_effect,
         locked: None,
     }
@@ -41,7 +41,7 @@ pub fn get_exit(revealed: bool, floor_num: usize) -> Tile {
         blocking: false,
         empt: false,
         revealed,
-        door: None,
+        door: false,
         slippery: false,
         step_effect: Some(Box::new(|_, _| {
             unsafe {
@@ -63,7 +63,7 @@ pub fn get_key(revealed: bool, key_id: u32) -> Tile {
         blocking: false,
         empt: false,
         revealed,
-        door: None,
+        door: false,
         slippery: false,
         step_effect: Some(Box::new(move |pos, _| {
             unsafe { KEYS_COLLECTED[key_id as usize] += 1 }

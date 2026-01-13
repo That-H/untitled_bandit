@@ -1,3 +1,24 @@
+# 0.8.3-alpha
+Corner cutting.
+
+## New Content
+- New puzzles:
+    - +1 advanced
+
+## New Features
+- Sometimes snips the corners off of rooms. Also removes some other nearby walls if it does so. Will
+not cur corners in ice rooms. This feature is highly unstable.
+- Added an indicator during puzzles as to how many stars have currently been earned on this puzzle.
+
+## General Changes
+- Modified the doors to use a floodfill algorithm to reveal the room instead of using the entire bounding 
+rect of the room.
+- Stopped counting damage dealt to doors. This fixes an exploit where a player could artificially increase
+combat efficiency by attacking doors continuously.
+- Slightly lowered amount of walls appearing in ice rooms (probability 0.3 -> 0.25).
+- Changed the position of the exit tile in the boss room to be the first valid position diagonally down and
+right from the top left corner of the room.
+
 # 0.8.2-beta
 Score improvements.
 

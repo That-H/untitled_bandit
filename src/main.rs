@@ -70,7 +70,7 @@ const PUZZLE_SELECT: u32 = 5;
 const NEXT_PUZZLE: u32 = 6;
 
 // Seed.
-static mut SEED: u64 = 0xBB219F0909BD0E20;
+static mut SEED: u64 = 0x479FD289EB33A332;
 
 // Contains the id of the puzzle if we are currently doing one. Not to be confused with a puzzle room.
 static mut PUZZLE: Option<usize> = None;
@@ -126,7 +126,7 @@ fn main() {
         ch: Some('#'.grey()),
         empt: false,
         blocking: true,
-        door: None,
+        door: false,
         revealed: true,
         locked: None,
         slippery: false,
@@ -137,7 +137,7 @@ fn main() {
         ch: Some('.'.grey()),
         empt: false,
         blocking: false,
-        door: None,
+        door: false,
         revealed: true,
         locked: None,
         slippery: false,
@@ -147,26 +147,30 @@ fn main() {
     // Add the floor.
     tile_set.add_tile(empty_t.clone());
     // Add a slippery floor.
-    tile_set.add_tile(
-        Tile {
-            slippery: true,
-            ch: Some(ICE_CHAR.with(ICE_CLR)),
-            ..empty_t.clone()
-        }
-    );
+    tile_set.add_tile(Tile {
+        slippery: true,
+        ch: Some(ICE_CHAR.with(ICE_CLR)),
+        ..empty_t.clone()
+    });
 
     // Load in the completion state of the puzzles.
     let stars_read = puzzle_loader::pzl_save::load_pzl_save();
-    let pzls =
-        match puzzle_loader::load_pzls(this_path.join("puzzles.txt"), &empty_t, &tile_set) {
-            Ok(pzls) => pzls,
-            Err(why) => panic!("{why}"),
-        };
+    let pzls = match puzzle_loader::load_pzls(this_path.join("puzzles.txt"), &empty_t, &tile_set) {
+        Ok(pzls) => pzls,
+        Err(why) => panic!("{why}"),
+    };
     let mut stars_earned = HashMap::new();
-    
+
     // Discard any data about non existent puzzles.
     for pzl in &pzls {
-        stars_earned.insert(pzl.id, if let Some(&hsh) = stars_read.get(&pzl.id) {hsh} else {0});
+        stars_earned.insert(
+            pzl.id,
+            if let Some(&hsh) = stars_read.get(&pzl.id) {
+                hsh
+            } else {
+                0
+            },
+        );
     }
     let pzl_count = pzls.len();
 
@@ -219,7 +223,7 @@ fn main() {
 
     // Display the current state of the map into the terminal.
     let display_map =
-        |map: &bn::Map<En>, win_cont: &mut windowed::Container<style::StyledContent<char>>| {
+        |map: &bn::Map<En>, win_cont: &mut windowed::Container<style::StyledContent<char>>, stars_earned: &HashMap<u128, u8>| {
             let player_pos = unsafe { PLAYER };
             let pl = map.get_ent(player_pos).unwrap();
             let is_puzzle = unsafe { PUZZLE.is_some() };
@@ -407,11 +411,14 @@ fn main() {
                     cur_win.outline_with('#'.grey());
                 }
             } else {
-                // Display just the seed.
+                // Display puzzle infos.
                 cur_win = &mut win_cont.windows[PUZZLE_WIN];
                 cur_win.data.clear();
 
                 let cur_puz = unsafe { *PUZZLE.as_ref().unwrap() };
+                let strs = stars_earned[&pzls[cur_puz].id];
+                let str1 = if strs >= 1 { '*' } else { ' ' };
+                let str2 = if strs >= 2 { '*' } else { ' ' };
                 add_line(
                     style::Color::White,
                     &format!("{}", pzls[cur_puz].diff),
@@ -420,7 +427,7 @@ fn main() {
                 );
                 add_line(
                     style::Color::White,
-                    &format!("Puzzle {}", cur_puz+1),
+                    &format!("Puzzle {} {str1}{str2}", cur_puz + 1),
                     cur_win,
                     PUZZLE_WID,
                 );
@@ -657,8 +664,7 @@ fn main() {
         menu_container.add_scene(end_scene);
 
         // Puzzle selection screen.
-        let mut pzl_scene = ui::Scene::new(Point::new(51, 20), 18, 5)
-            .with_scrolling(true);
+        let mut pzl_scene = ui::Scene::new(Point::new(51, 20), 18, 5).with_scrolling(true);
 
         // Last seen difficulty during puzzle screen generation.
         let mut last_diff = -1;
@@ -666,7 +672,11 @@ fn main() {
         for (n, pzl) in pzls.iter().enumerate() {
             let pos = Point::new(1, n as i32 + 2);
             let mut screen_pos = pos + Point::new(0, last_diff);
-            let strs = if let Some(s) = stars_earned.get(&pzls[n].id) { *s } else { 0 };
+            let strs = if let Some(s) = stars_earned.get(&pzls[n].id) {
+                *s
+            } else {
+                0
+            };
             let str1 = if strs >= 1 { '*' } else { ' ' };
             let str2 = if strs >= 2 { '*' } else { ' ' };
 
@@ -681,15 +691,17 @@ fn main() {
                     3 => style::Color::DarkRed,
                     d => panic!("Unexpected difficulty '{d}'"),
                 };
-                
+
                 pzl_scene.add_element(
                     Box::new(
                         basic_button
                             .clone()
                             .set_txt(format!("{}", pzl.diff))
                             .set_clr(clr)
-                            .set_screen_pos(screen_pos)
-                    ), pos + Point::new(500, 5));
+                            .set_screen_pos(screen_pos),
+                    ),
+                    pos + Point::new(500, 5),
+                );
                 screen_pos.y += 1;
             }
 
@@ -697,10 +709,12 @@ fn main() {
                 Box::new(
                     basic_button
                         .clone()
-                        .set_txt(format!("Puzzle {} {str1}{str2}", n+1))
+                        .set_txt(format!("Puzzle {} {str1}{str2}", n + 1))
                         .set_event(ui::Event::Exit(n as u32 + 100))
-                        .set_screen_pos(screen_pos)
-                ), pos);
+                        .set_screen_pos(screen_pos),
+                ),
+                pos,
+            );
 
             // Add a main menu button.
             if n == pzls.len() - 1 {
@@ -710,8 +724,10 @@ fn main() {
                             .clone()
                             .set_txt(String::from("Main Menu"))
                             .set_event(ui::Event::ChangeScene(0))
-                            .set_screen_pos(screen_pos + Point::new(0, 2))
-                    ), pos + Point::new(0, 1));
+                            .set_screen_pos(screen_pos + Point::new(0, 2)),
+                    ),
+                    pos + Point::new(0, 1),
+                );
             }
         }
         pzl_scene.add_element(
@@ -726,24 +742,20 @@ fn main() {
         // Alternate end screen for puzzles.
         let mut puzzle_end = ui::Scene::new(Point::new(52, 18), 16, 7);
         let next = basic_button
-                .clone()
-                .set_txt(String::from("Next Puzzle"))
-                .set_event(ui::Event::Exit(NEXT_PUZZLE));
+            .clone()
+            .set_txt(String::from("Next Puzzle"))
+            .set_event(ui::Event::Exit(NEXT_PUZZLE));
         let retry = basic_button
-                .clone()
-                .set_txt(String::from("Retry"))
-                .set_event(ui::Event::Exit(QUICK_RESET));
+            .clone()
+            .set_txt(String::from("Retry"))
+            .set_event(ui::Event::Exit(QUICK_RESET));
 
         puzzle_end.add_element(
-            Box::new(
-                next.clone().set_screen_pos(Point::new(1, 1))
-            ),
+            Box::new(next.clone().set_screen_pos(Point::new(1, 1))),
             Point::new(1, 1),
         );
         puzzle_end.add_element(
-            Box::new(
-                retry.clone().set_screen_pos(Point::new(1, 2))
-            ),
+            Box::new(retry.clone().set_screen_pos(Point::new(1, 2))),
             Point::new(1, 2),
         );
         puzzle_end.add_element(
@@ -784,16 +796,12 @@ fn main() {
         // End screen if the player dies in a puzzle. Gives the option to retry at the top instead.
         let mut dead_puzzle_end = puzzle_end.clone();
         dead_puzzle_end.add_element(
-            Box::new(
-                retry.set_screen_pos(Point::new(1, 1))
-            ),
-            Point::new(1, 1)
+            Box::new(retry.set_screen_pos(Point::new(1, 1))),
+            Point::new(1, 1),
         );
         dead_puzzle_end.add_element(
-            Box::new(
-                next.set_screen_pos(Point::new(1, 2))
-            ),
-            Point::new(1, 2)
+            Box::new(next.set_screen_pos(Point::new(1, 2))),
+            Point::new(1, 2),
         );
 
         puzzle_end.move_cursor(Point::new(1, 1));
@@ -823,10 +831,8 @@ fn main() {
                     };
                 },
                 // Puzzle selected.
-                c if c >= 100 && c < 100 + pzl_count as u32 => {
-                    unsafe { 
-                        PUZZLE = Some(c as usize - 100);
-                    }
+                c if c >= 100 && c < 100 + pzl_count as u32 => unsafe {
+                    PUZZLE = Some(c as usize - 100);
                 },
                 c => panic!("Unexpected code '{c}'"),
             }
@@ -879,7 +885,7 @@ fn main() {
             }
         };
 
-        display_map(&map, &mut main_wins);
+        display_map(&map, &mut main_wins, &stars_earned);
 
         'main: loop {
             ready = true;
@@ -1045,15 +1051,15 @@ fn main() {
             {
                 ready = false;
                 map.update();
-                display_map(&map, &mut main_wins);
+                display_map(&map, &mut main_wins, &stars_earned);
                 // thread::sleep(delay);
                 let mut did_vfx = false;
                 while map.update_vfx() > 0 {
                     did_vfx = true;
-                    display_map(&map, &mut main_wins);
+                    display_map(&map, &mut main_wins, &stars_earned);
                     thread::sleep(delay);
                 }
-                display_map(&map, &mut main_wins);
+                display_map(&map, &mut main_wins, &stars_earned);
                 if did_vfx {
                     thread::sleep(vfx_delay);
                 }
@@ -1082,7 +1088,7 @@ fn main() {
                             &templates,
                             &elites,
                         );
-                        display_map(&map, &mut main_wins);
+                        display_map(&map, &mut main_wins, &stars_earned);
                     }
                 }
             }
@@ -1120,7 +1126,6 @@ fn main() {
 
         let is_puzzle = unsafe { PUZZLE.is_some() };
 
-
         if !is_puzzle {
             // Real time taken.
             add_line(
@@ -1134,22 +1139,21 @@ fn main() {
         let turns = unsafe { GLOBAL_TIME };
         // In game time taken.
         let mut turn_msg = format!("Turns: {}", turns);
-        
+
         if is_puzzle {
-            unsafe { 
+            unsafe {
                 let idx = *PUZZLE.as_ref().unwrap();
                 let move_lim = pzls[idx].move_lim;
                 let stars = if DEAD {
                     0
                 } else {
                     turn_msg = format!("{turn_msg}/{move_lim}");
-                    if turns > move_lim {
-                        1
-                    } else {
-                        2
-                    }
+                    if turns > move_lim { 1 } else { 2 }
                 };
-                stars_earned.entry(pzls[idx].id).and_modify(|s| *s = std::cmp::max(*s, stars)).or_insert(stars);
+                stars_earned
+                    .entry(pzls[idx].id)
+                    .and_modify(|s| *s = std::cmp::max(*s, stars))
+                    .or_insert(stars);
                 let msg = match stars {
                     0 => "0 stars...",
                     1 => "1 star.",
@@ -1165,12 +1169,7 @@ fn main() {
             }
         }
 
-        add_line(
-            style::Color::White,
-            &turn_msg,
-            cur_win,
-            main_wid,
-        );
+        add_line(style::Color::White, &turn_msg, cur_win, main_wid);
 
         if !is_puzzle {
             // Floor reached.
@@ -1188,7 +1187,6 @@ fn main() {
                 cur_win,
                 main_wid,
             );
-
         }
 
         // Efficiency.
@@ -1213,9 +1211,10 @@ fn main() {
         );
 
         if !is_puzzle {
-            let mut score = unsafe {
-                (FLOORS_CLEARED * 100 + 3 * KILLED).saturating_sub(GLOBAL_TIME / 50) 
-            } as f64 * cmb_efficiency;
+            let mut score =
+                unsafe { (FLOORS_CLEARED * 100 + 3 * KILLED).saturating_sub(GLOBAL_TIME / 50) }
+                    as f64
+                    * cmb_efficiency;
 
             if score.is_nan() {
                 score = 0.0;
@@ -1231,12 +1230,7 @@ fn main() {
             }
 
             // Score.
-            add_line(
-                style::Color::White,
-                &score_msg,
-                cur_win,
-                main_wid,
-            );
+            add_line(style::Color::White, &score_msg, cur_win, main_wid);
 
             // Seed used.
             add_line(
@@ -1254,12 +1248,8 @@ fn main() {
         end_wins.refresh();
         print_win(&end_wins);
 
-        menu_container.change_scene(if is_puzzle { 
-            if unsafe { DEAD } {
-                5
-            } else {
-                4
-            }
+        menu_container.change_scene(if is_puzzle {
+            if unsafe { DEAD } { 5 } else { 4 }
         } else {
             2
         });
@@ -1275,12 +1265,10 @@ fn main() {
                     quick_restart = true;
                     PUZZLE = Some(cur_puz + 1);
                 }
-            }
-            c if c >= 100 && c < 100 + pzl_count as u32 => {
-                unsafe { 
-                    PUZZLE = Some(c as usize - 100);
-                    quick_restart = true;
-                }
+            },
+            c if c >= 100 && c < 100 + pzl_count as u32 => unsafe {
+                PUZZLE = Some(c as usize - 100);
+                quick_restart = true;
             },
             c => panic!("Unexpected code '{c}'"),
         }
@@ -1300,7 +1288,6 @@ fn main() {
         cursor::MoveTo(0, 0),
         cursor::Show,
     );
-
 }
 
 /// Clears all events currently in the queue.
@@ -1328,7 +1315,7 @@ fn check_seeds(init_seed: u64, sds: u64) -> bool {
         gen_floor(&mut map, &mut floor_rng, 0, &meta, &templates, &elites);
         let test = |t: Option<&Tile>| {
             if let Some(t) = t
-                && t.door.is_some()
+                && t.door
             {
                 true
             } else {

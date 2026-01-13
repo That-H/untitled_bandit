@@ -1,8 +1,8 @@
 //! Handles saving and loading puzzle saves.
 
 use std::collections::HashMap;
-use std::io::{self, ErrorKind, Write};
 use std::fs;
+use std::io::{self, ErrorKind, Write};
 
 const QUAL: &str = "";
 const ORGANISATION: &str = "Uranium Productions";
@@ -18,7 +18,7 @@ pub fn load_pzl_save() -> HashMap<u128, u8> {
             // Must not have a save file yet, so no completion to read.
             ErrorKind::NotFound => return map,
             e => panic!("Error reading save file: {e:?}"),
-        }
+        },
     };
 
     for line in lines.map_while(Result::ok) {
@@ -27,7 +27,10 @@ pub fn load_pzl_save() -> HashMap<u128, u8> {
             if n == 0 {
                 id = Some(num.parse().expect("Improper puzzle id"));
             } else if n == 1 {
-                map.insert(id.take().unwrap(), num.parse().expect("Improper completion status"));
+                map.insert(
+                    id.take().unwrap(),
+                    num.parse().expect("Improper completion status"),
+                );
                 id = None;
             } else {
                 break;
@@ -43,10 +46,12 @@ pub fn write_pzl_save(data: HashMap<u128, u8>) {
     let mut p = get_pzl_path();
     p.pop();
     fs::create_dir_all(&p).expect("Can't create the directories");
-    let mut file = io::BufWriter::new(fs::File::create(get_pzl_path()).expect("Unable to write save file"));
+    let mut file =
+        io::BufWriter::new(fs::File::create(get_pzl_path()).expect("Unable to write save file"));
 
     for (hash, stars) in data {
-        file.write_all(format!("{hash}:{stars}\n").as_bytes()).expect("Unable to write save file");
+        file.write_all(format!("{hash}:{stars}\n").as_bytes())
+            .expect("Unable to write save file");
     }
 
     file.flush().expect("Unable to flush save file");
@@ -54,7 +59,10 @@ pub fn write_pzl_save(data: HashMap<u128, u8>) {
 
 /// Get the path to the save directory.
 pub fn get_save_path() -> std::path::PathBuf {
-    directories::ProjectDirs::from(QUAL, ORGANISATION, APP).unwrap().data_local_dir().to_path_buf()
+    directories::ProjectDirs::from(QUAL, ORGANISATION, APP)
+        .unwrap()
+        .data_local_dir()
+        .to_path_buf()
 }
 
 // Get the path to the puzzle save file.

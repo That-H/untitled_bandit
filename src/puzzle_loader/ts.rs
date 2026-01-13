@@ -1,6 +1,10 @@
 //! Contains a structure for converting characters into bandit compatible objects.
 
-use crate::{entity::{En, EntityTemplate}, templates::PLAYER_CHARACTER, *};
+use crate::{
+    entity::{En, EntityTemplate},
+    templates::PLAYER_CHARACTER,
+    *,
+};
 use std::collections::HashMap;
 
 /// An object in a bandit map.
@@ -40,7 +44,7 @@ impl TileSet {
 
     /// Add the tile into the tile set.
     pub fn add_tile(&mut self, tile: Tile) {
-        self.0.insert(*tile.repr().content(), BanditObj::Tile(tile)); 
+        self.0.insert(*tile.repr().content(), BanditObj::Tile(tile));
     }
 
     /// Add the entity into the tile set.

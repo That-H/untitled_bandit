@@ -4,8 +4,7 @@ use crate::*;
 use std::error::Error;
 use std::str::FromStr;
 use std::{
-    fs,
-    fmt,
+    fmt, fs,
     io::{self, BufRead},
 };
 
@@ -24,12 +23,16 @@ pub enum Difficulty {
 
 impl fmt::Display for Difficulty {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", match *self {
-            Self::Beginner => "Beginner",
-            Self::Intermediate => "Intermediate",
-            Self::Advanced => "Advanced",
-            Self::Extreme => "Extreme",
-        })
+        write!(
+            f,
+            "{}",
+            match *self {
+                Self::Beginner => "Beginner",
+                Self::Intermediate => "Intermediate",
+                Self::Advanced => "Advanced",
+                Self::Extreme => "Extreme",
+            }
+        )
     }
 }
 
@@ -115,7 +118,7 @@ impl TryFrom<PuzzleBuilder> for Puzzle {
                 pl_pos: value.pl_pos.unwrap(),
                 diff: value.diff.unwrap(),
                 move_lim: value.move_lim.unwrap(),
-                id: value.id.unwrap()
+                id: value.id.unwrap(),
             })
         } else {
             Err(())
@@ -127,7 +130,9 @@ impl TryFrom<PuzzleBuilder> for Puzzle {
 fn create_map(data: &str, tile_set: &ts::TileSet, default_tile: &Tile) -> PuzzleBuilder {
     let mut map = bn::Map::new(69, 69);
     let mut builder = PuzzleBuilder::new();
-    builder.id.replace(u128::from_ne_bytes(md5::compute(data).0));
+    builder
+        .id
+        .replace(u128::from_ne_bytes(md5::compute(data).0));
 
     for (y, ln) in data.lines().rev().enumerate() {
         for (x, ch) in ln.chars().enumerate() {
@@ -171,11 +176,19 @@ pub fn load_pzl(
     let mut pzl = Puzzle::new(diff, move_lim, id.unwrap());
     pzl.data = match data {
         Some(d) => d,
-        None => return Err(LoadErr::IncorrectFormat(String::from("Puzzle contains no data"))),
+        None => {
+            return Err(LoadErr::IncorrectFormat(String::from(
+                "Puzzle contains no data",
+            )));
+        }
     };
     pzl.pl_pos = match pl_pos {
         Some(p) => p,
-        None => return Err(LoadErr::IncorrectFormat(String::from("Puzzle contains no player"))),
+        None => {
+            return Err(LoadErr::IncorrectFormat(String::from(
+                "Puzzle contains no player",
+            )));
+        }
     };
     Ok(pzl)
 }
@@ -191,11 +204,16 @@ pub fn load_pzls<P: AsRef<std::path::Path>>(
     let mut data = String::new();
     let mut builder = PuzzleBuilder::new();
 
-    for line in read_lines(fname).map_err(|e| match e.kind() {
-        io::ErrorKind::NotFound => LoadErr::NotFound,
-        io::ErrorKind::ResourceBusy => LoadErr::Cant(String::from("the file is already in use")),
-        e => LoadErr::Other(e),
-    })?.map_while(Result::ok) {
+    for line in read_lines(fname)
+        .map_err(|e| match e.kind() {
+            io::ErrorKind::NotFound => LoadErr::NotFound,
+            io::ErrorKind::ResourceBusy => {
+                LoadErr::Cant(String::from("the file is already in use"))
+            }
+            e => LoadErr::Other(e),
+        })?
+        .map_while(Result::ok)
+    {
         match state {
             // Read difficulty and move limit.
             0 => {
@@ -205,7 +223,9 @@ pub fn load_pzls<P: AsRef<std::path::Path>>(
                             builder.move_lim.replace(val.parse().unwrap_or(999));
                         }
                         1 => {
-                            builder.diff.replace(val.parse().map_err(|_e| LoadErr::IncorrectFormat(format!("invalid difficulty '{val}'")))?);
+                            builder.diff.replace(val.parse().map_err(|_e| {
+                                LoadErr::IncorrectFormat(format!("invalid difficulty '{val}'"))
+                            })?);
                         }
                         _ => break,
                     }
@@ -220,8 +240,14 @@ pub fn load_pzls<P: AsRef<std::path::Path>>(
                         &data,
                         default_tile,
                         tile_set,
-                        builder.diff.ok_or(LoadErr::IncorrectFormat(String::from("No difficulty set for puzzle")))?,
-                        builder.move_lim.ok_or(LoadErr::IncorrectFormat(String::from("No move limit set for puzzle")))?,
+                        builder.diff.ok_or(LoadErr::IncorrectFormat(String::from(
+                            "No difficulty set for puzzle",
+                        )))?,
+                        builder
+                            .move_lim
+                            .ok_or(LoadErr::IncorrectFormat(String::from(
+                                "No move limit set for puzzle",
+                            )))?,
                     )?;
                     pzls.push(pzl);
                     data = String::new();
@@ -240,7 +266,9 @@ pub fn load_pzls<P: AsRef<std::path::Path>>(
 }
 
 /// Return a buffered reader over the lines of a file.
-pub fn read_lines<P: AsRef<std::path::Path>>(path: P) -> io::Result<io::Lines<io::BufReader<fs::File>>> {
+pub fn read_lines<P: AsRef<std::path::Path>>(
+    path: P,
+) -> io::Result<io::Lines<io::BufReader<fs::File>>> {
     let file = fs::File::open(path)?;
     Ok(io::BufReader::new(file).lines())
 }
@@ -268,4 +296,3 @@ impl fmt::Display for LoadErr {
         write!(f, "{txt}")
     }
 }
-
