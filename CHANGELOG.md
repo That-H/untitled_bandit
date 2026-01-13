@@ -1,3 +1,24 @@
+# 0.8.2-beta
+Score improvements.
+
+## New Content
+- New puzzles:
+    - +1 intermediate
+    - +2 advanced
+
+## General Changes
+- Prevented any instance of NaN appearing by replacing it with 0.
+- Modified the scoring formula to reward killing to a greater extent.
+- Changed end screen outline colour from white to grey.
+
+## Balance Changes
+- R is pretty violent, so it has been swapped with Q (which is on a similar level to O).
+    - R floor range 1-1 -> 2-2
+    - Q floor range 2-2 -> 1-1
+
+## Regression Fixes
+- Prevented enemies dealing damage counting towards the total damage dealt.
+
 # 0.8.2-alpha3
 Adds scoring and other stats.
 

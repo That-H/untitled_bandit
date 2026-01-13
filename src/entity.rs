@@ -183,13 +183,17 @@ impl En {
             DmgType::Dmg(d) => {
                 if d > *self.hp {
                     unsafe {
-                        DAMAGE_DEALT += *self.hp;
+                        if !self.is_player {
+                            DAMAGE_DEALT += *self.hp;
+                        }
                     }
                     self.hp.set_to(0);
                     true
                 } else {
                     unsafe {
-                        DAMAGE_DEALT += d;
+                        if !self.is_player {
+                            DAMAGE_DEALT += d;
+                        }
                     }
                     self.hp -= d;
                     false

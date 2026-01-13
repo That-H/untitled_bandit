@@ -1192,9 +1192,14 @@ fn main() {
         }
 
         // Efficiency.
-        let cmb_efficiency = unsafe {
+        let mut cmb_efficiency = unsafe {
             DAMAGE_DEALT as f64 / if is_puzzle { GLOBAL_TIME } else { COMBAT_TIME } as f64
         };
+
+        if cmb_efficiency.is_nan() {
+            cmb_efficiency = 0.0;
+        }
+
         let msg = if is_puzzle {
             "Efficiency"
         } else {
@@ -1208,9 +1213,13 @@ fn main() {
         );
 
         if !is_puzzle {
-            let score = unsafe {
-                (FLOORS_CLEARED * 100 + KILLED).saturating_sub(GLOBAL_TIME / 50) 
+            let mut score = unsafe {
+                (FLOORS_CLEARED * 100 + 3 * KILLED).saturating_sub(GLOBAL_TIME / 50) 
             } as f64 * cmb_efficiency;
+
+            if score.is_nan() {
+                score = 0.0;
+            }
 
             let old_high = high_score;
             high_score = f64::max(score, high_score);
@@ -1240,7 +1249,7 @@ fn main() {
 
         add_line(style::Color::White, "", cur_win, main_wid);
 
-        cur_win.outline_with('#'.stylize());
+        cur_win.outline_with('#'.grey());
         thread::sleep(time::Duration::from_millis(275));
         end_wins.refresh();
         print_win(&end_wins);
