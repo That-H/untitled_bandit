@@ -104,6 +104,23 @@ impl MeleeAtk {
     pub fn hits(&self, from: Point, target: Point) -> bool {
         self.place.iter().any(|p| (*p + from) == target)
     }
+
+    /// Return all the positions that the attack can hit with the damage that would be dealt.
+    pub fn damage_map(&self, from: Point) -> HashMap<Point, i32> {
+        let mut map = HashMap::new();
+        let mut dmg = 0;
+        for efct in self.effects.iter() {
+            if let Effect::DoDmg(inst) = efct {
+                dmg += inst.total_dmg();
+            }
+        }
+
+        for &pos in self.place.iter() {
+            map.insert(pos + from, dmg);
+        }
+
+        map
+    }
 }
 
 type CalcLineFx = fn(bool, Vec<Point>) -> Vec<(Point, Vfx)>;
@@ -153,6 +170,20 @@ impl AtkPat {
             melee_atks: HashMap::new(),
             ranged_atks: Vec::new(),
         }
+    }
+
+    /// Return all the positions that any attack can hit with the damage that would be dealt.
+    /// Ignores ranged attacks.
+    pub fn damage_map(&self, from: Point) -> HashMap<Point, i32> {
+        let mut map = HashMap::new();
+
+        for (_dir, atks) in self.melee_atks.iter() {
+            for atk in atks {
+                map.extend(atk.damage_map(from));
+            }
+        }
+
+        map
     }
 
     /// Create an attack pattern from the given melee attacks, which are assumed to have

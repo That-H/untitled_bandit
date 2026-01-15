@@ -42,6 +42,10 @@ impl Cell {
     fn is_wall(&self) -> bool {
         matches!(self, &Cell::Wall(_))
     }
+
+    fn is_ice(&self) -> bool {
+        matches!(self, &Cell::Ice(_))
+    }
 }
 
 impl From<Cell> for bool {
@@ -454,7 +458,7 @@ pub fn cut_corners<R: Rng>(rect: &Rect, occupied: &mut HashMap<Point, Cell>, rng
         let prolif = rng.random_ratio(1, denom);
         if prolif {
             if relevant.iter().all(|&p| {
-                if let Some(cl) = occupied.get(&(p + mrk)) && cl.is_door() {
+                if let Some(cl) = occupied.get(&(p + mrk)) && (cl.is_door() || cl.is_ice()) {
                     false
                 } else {
                     true

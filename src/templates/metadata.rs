@@ -1,4 +1,8 @@
 use std::collections::HashMap;
+use crate::{get_assets_path, puzzle_loader::read_lines};
+
+/// Name of the file containing the description of each enemy.
+pub const DESC_FILE: &str = "desc.txt";
 
 /// Metadata about templates.
 pub struct TempMeta {
@@ -8,6 +12,31 @@ pub struct TempMeta {
     pub floor_rang: std::ops::RangeInclusive<u32>,
     /// Maximum amount of this entity that can spawn in a room.
     pub max: u32,
+}
+
+/// Return a mapping of the enemies' character representations to their descriptions.
+pub fn get_descs() -> HashMap<char, String> {
+    let mut state = 0;
+    let mut map = HashMap::new();
+    let mut desc = String::new();
+    let mut ch = None;
+
+    for ln in read_lines(get_assets_path().join(DESC_FILE)).unwrap().map_while(Result::ok) {
+        if state == 0 {
+            ch = Some(ln.chars().next().expect("Incorrect description formatting"));
+            state = 1;
+        } else if state == 1 {
+            if ln.is_empty() {
+                map.insert(ch.take().unwrap(), desc);
+                desc = String::new();
+                state = 0;
+            } else {
+                desc.push_str(&ln);
+            }
+        };
+    }
+
+    map
 }
 
 /// Returns metadata about templates.

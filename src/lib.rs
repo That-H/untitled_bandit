@@ -1,10 +1,15 @@
 #![allow(static_mut_refs)]
 
 use crossterm::style::{self, Stylize};
+use crossterm::{cursor, queue};
 use dyn_clone::{DynClone, clone_trait_object};
 use rect::Rect;
-use std::fmt;
+use std::{
+    io::{self, Write},
+    fmt
+};
 use std::sync::RwLock;
+use bn::windowed;
 
 // Whether cheats are enabled. Only possible in a debug build.
 pub const CHEATS: bool = if cfg!(debug_assertions) { true } else { false };
@@ -25,6 +30,12 @@ pub const DOOR_CLRS: [style::Color; KILL_SCREEN] = [
     },
     style::Color::DarkYellow,
 ];
+
+/// Width of the terminal in characters.
+pub const TERMINAL_WID: u16 = 120;
+/// Height of the terminal in characters.
+pub const TERMINAL_HGT: u16 = 30;
+
 pub const WALL_CLRS: [style::Color; KILL_SCREEN] = [
     style::Color::DarkGrey,
     style::Color::White,
@@ -33,6 +44,9 @@ pub const WALL_CLRS: [style::Color; KILL_SCREEN] = [
 ];
 pub const ICE_CHAR: char = '*';
 pub const ICE_CLR: style::Color = style::Color::Cyan;
+
+/// Directory of the assets.
+pub const ASSETS_DIR: &str = "assets";
 
 pub static REVEALED: RwLock<bool> = RwLock::new(false);
 
@@ -59,6 +73,32 @@ pub mod save_file;
 
 pub mod datum;
 pub use datum::Datum;
+
+/// Return the path to the assets directory of the project.
+pub fn get_assets_path() -> std::path::PathBuf {
+    let mut this_path = std::env::current_exe().expect("Failed to get path to project");
+    for _ in 0..3 {
+        this_path.pop();
+    }
+    this_path.push(ASSETS_DIR);
+
+    this_path
+}
+
+/// Display a window container into the terminal window.
+pub fn print_win(win_cont: &windowed::Container<style::StyledContent<char>>) {
+    let mut handle = io::stdout();
+
+    // Print the screen.
+    let screen = win_cont.to_string_with_default(TERMINAL_WID, TERMINAL_HGT - 1, ' '.stylize());
+
+    for (y, line) in screen.lines().enumerate() {
+        let _ = queue!(handle, cursor::MoveTo(0, y as u16), style::Print(line));
+    }
+
+    let _ = handle.flush();
+}
+
 
 /// Returns the colour of doors on the current floor.
 pub fn get_door_clr() -> style::Color {
@@ -278,3 +318,21 @@ pub enum ActionType {
     /// Uses the provided function to generate [commands](bn::Cmd) directly, given the environment.
     Arbitrary(Box<fn(&bn::Map<entity::En>, &entity::En, Point) -> Vec<bn::Cmd<entity::En>>>),
 }
+
+impl fmt::Display for ActionType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let txt = match self {
+            Self::TryMove(disp) => &tile_presets::ARROWS[disp.dir()].to_string(),
+            Self::TryMelee | Self::ForceMelee(_, _) => "A",
+            Self::Pathfind => "P",
+            Self::Wait => "W",
+            Self::Multi(a, b) => &format!("M({}{})", a.to_string(), b.to_string()),
+            Self::Chain(a, b) => &format!("C({}{})", a.to_string(), b.to_string()),
+            Self::Jump(idx) => &format!("J{idx}"),
+            _ => "?",
+        };
+
+        write!(f, "{}", txt)
+    }
+}
+

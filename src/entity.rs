@@ -7,10 +7,10 @@ use crate::bn;
 use attacks::*;
 use bn::Entity;
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
-use std::sync::RwLock;
+use std::sync::{LazyLock, RwLock};
 
 /// Type of action the player will perform.
 pub static mut ACTION: ActionType = ActionType::Wait;
@@ -40,6 +40,19 @@ pub static LOG_MSGS: RwLock<Vec<LogMsg>> = RwLock::new(Vec::new());
 pub static LAST_DOOR: RwLock<Option<Point>> = RwLock::new(None);
 /// Walk through the waller.
 pub static NO_CLIP: RwLock<bool> = RwLock::new(false);
+/// Times each enemy has been killed.
+pub static KILL_COUNTS: RwLock<LazyLock<HashMap<char, u32>>> = RwLock::new(LazyLock::new(|| {
+    match save_file::load_kills() {
+        Ok(map) => map,
+        Err(why) => match why {
+            puzzle_loader::LoadErr::NotFound => HashMap::new(),
+            _ => panic!("{why}"),
+        },
+    }
+}));
+
+/// Contains the id of the puzzle if we are currently doing one. Not to be confused with a puzzle room.
+pub static mut PUZZLE: Option<usize> = None;
 
 pub const KEY_CLRS: [style::Color; 4] = [
     style::Color::DarkRed,
@@ -249,6 +262,10 @@ impl bn::Entity for En {
         if self.is_dead()
             && let Special::Not = self.special
         {
+            // Write to the global kill counter for this enemy type if this is not a puzzle.
+            if unsafe { PUZZLE.is_none() } {
+                *KILL_COUNTS.write().unwrap().entry(*self.ch.content()).or_insert(0) += 1;
+            }
             if self.is_player {
                 unsafe { DEAD = true }
             } else {

@@ -1,20 +1,18 @@
 #![allow(unused_must_use)]
 #![allow(static_mut_refs)]
 
-use attacks::*;
 use bn::windowed;
 use crossterm::style::{self, Stylize};
-use crossterm::{cursor, event, execute, queue, terminal};
+use crossterm::{cursor, event, execute, terminal};
 use entity::*;
-use io::{Read, Write};
+use io::Read;
 use map_gen::bandit_gen::*;
 use rand::{Rng, SeedableRng};
-use std::{collections::HashMap, env, fs, io, thread, time};
+use untitled_bandit::templates::metadata::TempMeta;
+use std::{collections::HashMap, fs, io, thread, time};
+use std::sync::LazyLock;
 use tile_presets::*;
 use untitled_bandit::*;
-
-// Directory of the assets.
-const ASSETS_DIR: &str = "assets";
 
 // UI constants.
 const SELECTOR: &str = ">";
@@ -28,9 +26,6 @@ const HOVER_CLR: style::Color = style::Color::Rgb {
     g: 240,
     b: 0,
 };
-
-const TERMINAL_WID: u16 = 120;
-const TERMINAL_HGT: u16 = 30;
 const WINDOW_WIDTH: u16 = 40;
 const WINDOW_HEIGHT: u16 = 20;
 
@@ -70,10 +65,7 @@ const PUZZLE_SELECT: u32 = 5;
 const NEXT_PUZZLE: u32 = 6;
 
 // Seed.
-static mut SEED: u64 = 0x479FD289EB33A332;
-
-// Contains the id of the puzzle if we are currently doing one. Not to be confused with a puzzle room.
-static mut PUZZLE: Option<usize> = None;
+static mut SEED: u64 = 0xFBAB693BEEFD53E4;
 
 // Whether this here initial seed should be ignored.
 const SEED_OVERRIDE: bool = !CHEATS;
@@ -81,11 +73,7 @@ const SEED_OVERRIDE: bool = !CHEATS;
 fn main() {
     // Get the path to this executable so that assets can be loaded even if the project is
     // downloaded from github.
-    let mut this_path = env::current_exe().expect("Failed to get path to project");
-    for _ in 0..3 {
-        this_path.pop();
-    }
-    this_path.push(ASSETS_DIR);
+    let this_path = get_assets_path();
 
     // Rng used for map generation. Has to be separate to ensure determinism
     // with the map and its contents.
@@ -153,6 +141,9 @@ fn main() {
         ..empty_t.clone()
     });
 
+    // Load all enemy descriptions.
+    let descs = templates::metadata::get_descs();
+
     // Load in the completion state of the puzzles.
     let stars_read = puzzle_loader::pzl_save::load_pzl_save();
     let pzls = match puzzle_loader::load_pzls(this_path.join("puzzles.txt"), &empty_t, &tile_set) {
@@ -205,20 +196,6 @@ fn main() {
         }
 
         win.data.push(line);
-    };
-
-    // Display the given window container to the screen.
-    let print_win = |win_cont: &windowed::Container<style::StyledContent<char>>| {
-        let mut handle = io::stdout();
-
-        // Print the screen.
-        let screen = win_cont.to_string_with_default(TERMINAL_WID, TERMINAL_HGT - 1, ' '.stylize());
-
-        for (y, line) in screen.lines().enumerate() {
-            queue!(handle, cursor::MoveTo(0, y as u16), style::Print(line));
-        }
-
-        handle.flush();
     };
 
     // Display the current state of the map into the terminal.
@@ -277,19 +254,7 @@ fn main() {
             // Display current attacks and put them in a window.
             cur_win = &mut win_cont.windows[ATKS];
             cur_win.data.clear();
-            let mut damages: HashMap<Point, DmgInst> = HashMap::new();
-
-            for atks in pl.atks.melee_atks.values() {
-                for atk in atks.iter() {
-                    for pos in atk.place.iter() {
-                        for ef in atk.effects.iter() {
-                            if let Effect::DoDmg(dmg_inst) = ef {
-                                damages.insert(*pos, *dmg_inst);
-                            }
-                        }
-                    }
-                }
-            }
+            let damages: HashMap<Point, i32> = pl.atks.damage_map(Point::ORIGIN);
 
             let win_centre = Point::new((ATKS_WID / 2) as i32, (ATKS_WID / 2) as i32);
 
@@ -301,10 +266,11 @@ fn main() {
                     let mut ch = '.'.stylize();
                     if pos == win_centre {
                         ch = pl.ch;
-                    } else if let Some(dmg_inst) = damages.get(&(pos - win_centre)) {
-                        ch = match dmg_inst.dmg {
-                            DmgType::Dmg(d) => char::from_digit(d, 16).unwrap().red(),
-                            DmgType::Heal(h) => char::from_digit(h, 16).unwrap().green(),
+                    } else if let Some(&dmg) = damages.get(&(pos - win_centre)) {
+                        ch = if dmg >= 0 {
+                            char::from_digit(dmg as u32, 16).unwrap().red()
+                        } else {
+                            char::from_digit(-dmg as u32, 16).unwrap().green()
                         };
                     }
                     cur_win.data[y].push(ch);
@@ -473,13 +439,9 @@ fn main() {
         let delay = time::Duration::from_millis(DELAY);
         let vfx_delay = time::Duration::from_millis(VFX_DELAY);
         let mut ready;
-
-        // Main menu here.
-        let mut main_menu_cont: windowed::Container<style::StyledContent<char>> =
-            windowed::Container::new();
-
-        // Title text.
-        main_menu_cont.add_win(windowed::Window::new(Point::new(26, 1)));
+        
+        // Main menu.
+        let mut scene = ui::Scene::new(Point::new(52, 20), 16, 7);
 
         if !quick_restart {
             unsafe {
@@ -490,25 +452,13 @@ fn main() {
             let mut main_text = String::new();
             f.read_to_string(&mut main_text);
 
-            for line in main_text.lines() {
-                add_line(
-                    style::Color::White,
-                    line,
-                    &mut main_menu_cont.windows[0],
-                    TERMINAL_WID as usize,
-                );
-                main_menu_cont.refresh();
-                print_win(&main_menu_cont);
-                thread::sleep(delay);
-            }
+            let title = ui::widgets::Title::new(Point::new(26, 0), main_text, Some(delay));
+            scene.add_element(Box::new(title), Point::new(500, 500));
         }
 
         clear_events();
 
         let mut menu_container = ui::UiContainer::new();
-
-        // Main menu.
-        let mut scene = ui::Scene::new(Point::new(52, 20), 16, 6);
 
         let basic_button = ui::widgets::Button::empty_new()
             .set_selector(String::from(SELECTOR))
@@ -555,11 +505,24 @@ fn main() {
             Box::new(
                 basic_button
                     .clone()
-                    .set_txt(String::from("Save and Quit"))
-                    .set_event(ui::Event::Exit(QUIT))
+                    .set_txt(String::from("Alphabet"))
+                    .set_events(vec![
+                        ui::Event::Broadcast(String::from("clr")),
+                        ui::Event::ChangeScene(6)
+                    ])
                     .set_screen_pos(Point::new(1, 4)),
             ),
             Point::new(1, 4),
+        );
+        scene.add_element(
+            Box::new(
+                basic_button
+                    .clone()
+                    .set_txt(String::from("Save and Quit"))
+                    .set_event(ui::Event::Exit(QUIT))
+                    .set_screen_pos(Point::new(1, 5)),
+            ),
+            Point::new(1, 5),
         );
         scene.add_element(
             Box::new(ui::widgets::Outline::new('#'.grey(), 16)),
@@ -809,12 +772,138 @@ fn main() {
 
         menu_container.add_scene(puzzle_end);
         menu_container.add_scene(dead_puzzle_end);
+        
+        // Alphabet screen.
+        let mut alpha_scene = ui::Scene::new(Point::new(43, 10), 34, 15).with_scrolling(true);
+        let mut info_boxes = ui::widgets::MultiBox::new(Point::new(10, 1), false);
+
+        let kill_read = KILL_COUNTS.read().unwrap();
+        let mut skipped = 0;
+        
+        // Open the alphabet file.
+        let mut f = fs::File::open(this_path.join("alphabet.txt")).unwrap();
+        let mut main_text = String::new();
+        f.read_to_string(&mut main_text);
+
+        let title = ui::widgets::Title::new(Point::new(20, 0), main_text, Some(delay));
+        alpha_scene.add_element(Box::new(title), Point::new(500, 500));
+
+        // Default values for the null info box.
+        let def_temp = EntityTemplate {
+            max_hp: 0,
+            atks: attacks::AtkPat::empty(),
+            ch: '?'.stylize(),
+            actions: Vec::new(),
+            movement: Vec::new(),
+        };
+        let def_meta = TempMeta {
+            floor_rang: 0..=0,
+            cost: 0,
+            max: 0,
+        };
+
+        let desc = if LazyLock::<HashMap<char, u32>>::force(&kill_read).is_empty() {
+            "Too bad you don't know your ABCs..."
+        } else {
+            "???"
+        };
+
+        info_boxes.mk_info(
+            &def_temp,
+            &def_meta,
+            0,
+            '#'.grey(),
+            desc,
+        );
+
+        for (n, ch) in ('a'..='z').chain('A'..='Z').enumerate() {
+            let count = *LazyLock::<HashMap<char, u32>>::force(&kill_read).get(&ch).unwrap_or(&0);
+            let pos = Point::new(1, n as i32 + 1 - skipped);
+            let screen_pos = pos + Point::new(0, 6);
+            
+            // Add a main menu button.
+            if n == 51 {
+                let men_off = if count > 0 { 1 } else { 0 };
+                alpha_scene.add_element(
+                    Box::new(
+                        basic_button
+                            .clone()
+                            .set_txt(String::from("Back"))
+                            .set_events(vec![
+                                ui::Event::Broadcast(String::from("clr")),
+                                ui::Event::ChangeScene(0)
+                            ])
+                            .set_screen_pos(screen_pos + Point::new(0, men_off + 1)),
+                    ),
+                    pos + Point::new(0, men_off),
+                );
+            }
+
+            let msg = if count > 0 { 
+                format!("{ch}")
+            } else { 
+                skipped += 1;
+                continue;
+            };
+
+            let relevant_idx = templates.iter().position(|t| *t.ch.content() == ch);
+            let capital_idx = elites.iter().position(|t| *t.ch.content() == ch);
+            let temp = match relevant_idx {
+                Some(idx) => Some(&templates[idx]),
+                None => match capital_idx {
+                    Some(idx) => Some(&elites[idx]),
+                    None => None,
+                }
+            };
+
+            let ev = match temp {
+                Some(cur_temp) => {
+                    info_boxes.mk_info(
+                        cur_temp,
+                        &meta[&ch],
+                        count,
+                        '#'.grey(),
+                        descs.get(&ch).unwrap(),
+                    );
+
+                    ui::Event::Broadcast(format!("switch {}", n as i32 - skipped + 1))
+                },
+                None => ui::Event::Null,
+            };
+            alpha_scene.add_element(
+                Box::new(
+                    basic_button
+                        .clone()
+                        .set_txt(msg)
+                        .set_event(ev)
+                        .set_screen_pos(screen_pos),
+                ),
+                pos,
+            );
+        }
+        
+        // Need to kill it so we can write to it later.
+        drop(kill_read);
+
+        alpha_scene.add_element(
+            Box::new(ui::widgets::Outline::new('#'.grey(), 34)),
+            Point::new(999, 999),
+        );
+        alpha_scene.add_element(
+            Box::new(info_boxes),
+            Point::new(69, 69),
+        );
+
+        alpha_scene.move_cursor(Point::new(1, 1));
+
+        menu_container.add_scene(alpha_scene);
 
         if insta_puzzle {
             menu_container.change_scene(3);
             insta_puzzle = false;
         }
 
+        // Run the main menu ui if we aren't restarting quickly.
         if !quick_restart {
             match menu_container.run() {
                 QUIT => break 'full,
@@ -837,6 +926,7 @@ fn main() {
                 c => panic!("Unexpected code '{c}'"),
             }
         }
+
         quick_restart = false;
 
         // Time when the game began.
@@ -1279,6 +1369,9 @@ fn main() {
 
     // Write high_score to file.
     save_file::save_highscore(high_score);
+
+    // Write kill counts to file.
+    save_file::save_kills(&*KILL_COUNTS.read().unwrap());
 
     // Put the terminal in a "normal" state in case the player actually wants to use it afterwards.
     terminal::disable_raw_mode();

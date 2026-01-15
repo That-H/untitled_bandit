@@ -1,3 +1,14 @@
+# 0.8.3-alpha2
+Alphabetical!
+
+## New Features
+- The game now also keeps track of how many of each enemy you have killed.
+- Alphabet option on the main menu. This gives the player information on every enemy
+they have killed at least once.
+
+## Regression Fixes
+- Fixed ice puzzles sometimes connecting to the void when corners are cut near them.
+
 # 0.8.3-alpha
 Corner cutting.
 

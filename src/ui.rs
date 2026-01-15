@@ -21,8 +21,8 @@ pub trait UiElement: DynClone {
     /// Toggle whether this element is being hovered over.
     fn toggle_hover(&mut self);
 
-    /// Create an event when the element is activated by the enter key.
-    fn activate(&mut self) -> Event;
+    /// Create some events when the element is activated by the enter key.
+    fn activate(&mut self) -> Vec<Event>;
 
     /// Do something with received data.
     fn receive(&mut self, data: &str);
@@ -280,34 +280,42 @@ impl UiContainer {
                                 }
                             }
                             Nav::Activate => {
-                                let ev = scene
+                                let evs = scene
                                     .elements
                                     .get_mut(&scene.cursor)
                                     .expect("No ui elements to activate")
                                     .activate();
+                                let mut new_idx = None;
 
-                                match ev {
-                                    Event::Exit(code) => return code,
-                                    Event::ChangeScene(idx) => {
-                                        for (y, row) in scene.win.data.iter().enumerate() {
-                                            for (x, _) in row.iter().enumerate() {
-                                                let p = Point::new(x as i32, y as i32)
-                                                    + scene.win.top_left;
-                                                let _ = queue!(
-                                                    handle,
-                                                    cursor::MoveTo(p.x as u16, p.y as u16),
-                                                    style::Print(' ')
-                                                );
+                                for ev in evs {
+                                    match ev {
+                                        Event::Exit(code) => return code,
+                                        Event::ChangeScene(idx) => {
+                                            for (y, row) in scene.win.data.iter().enumerate() {
+                                                for (x, _) in row.iter().enumerate() {
+                                                    let p = Point::new(x as i32, y as i32)
+                                                        + scene.win.top_left;
+                                                    let _ = queue!(
+                                                        handle,
+                                                        cursor::MoveTo(p.x as u16, p.y as u16),
+                                                        style::Print(' ')
+                                                    );
+                                                }
+                                            }
+
+                                            new_idx = Some(idx);
+                                        }
+                                        Event::Broadcast(d) => {
+                                            for elem in scene.elements.values_mut() {
+                                                elem.receive(&d);
                                             }
                                         }
-                                        self.cur = idx;
+                                        Event::Null => (),
                                     }
-                                    Event::Broadcast(d) => {
-                                        for elem in scene.elements.values_mut() {
-                                            elem.receive(&d);
-                                        }
-                                    }
-                                    Event::Null => (),
+                                }
+
+                                if let Some(idx) = new_idx {
+                                    self.cur = idx;
                                 }
                             }
                             Nav::Null => continue,

@@ -1,7 +1,15 @@
 //! Contains some widgets for use with a UiContainer.
 
+use crate::{entity::EntityTemplate, templates::metadata::TempMeta};
+
 use super::*;
 use paste::paste;
+
+pub mod multi_box;
+pub use multi_box::MultiBox;
+
+pub mod title;
+pub use title::Title;
 
 macro_rules! field_builder {
     ($struct_name:ident, $field:ident; $f_type:ty) => {
@@ -37,7 +45,7 @@ pub struct Button {
     hover_clr: style::Color,
     selector: String,
     selector_clr: style::Color,
-    event: Event,
+    event: Vec<Event>,
     hover: bool,
     screen_pos: Point,
     static_len: bool,
@@ -54,9 +62,23 @@ impl Button {
     field_builder! {Button, hover_clr; style::Color}
     field_builder! {Button, selector_clr; style::Color}
     field_builder! {Button, selector; String}
-    field_builder! {Button, event; Event}
     field_builder! {Button, static_len}
     field_builder! {Button, screen_pos; Point}
+
+    /// Set the event of the button.
+    pub fn set_event(self, ev: Event) -> Self {
+        Self {
+            event: vec![ev],
+            ..self
+        }
+    }
+    /// Set multiple events of the button.
+    pub fn set_events(self, evs: Vec<Event>) -> Self {
+        Self {
+            event: evs,
+            ..self
+        }
+    }
 
     /// Return the text that would be displayed by this button currently.
     fn get_text(&self) -> Vec<StyleCh> {
@@ -105,7 +127,7 @@ impl Default for Button {
                 g: 190,
                 b: 0,
             },
-            event: Event::Null,
+            event: vec![Event::Null],
             hover: false,
             screen_pos: Point::ORIGIN,
             static_len: false,
@@ -116,7 +138,7 @@ impl Default for Button {
 impl UiElement for Button {
     fn receive(&mut self, _data: &str) {}
 
-    fn activate(&mut self) -> Event {
+    fn activate(&mut self) -> Vec<Event> {
         self.event.clone()
     }
 
@@ -155,8 +177,8 @@ impl Outline {
 impl UiElement for Outline {
     fn receive(&mut self, _data: &str) {}
 
-    fn activate(&mut self) -> Event {
-        Event::Null
+    fn activate(&mut self) -> Vec<Event> {
+        vec![Event::Null]
     }
 
     fn display_into(&self, win: &mut windowed::Window<StyleCh>, _offset: Point) {
@@ -171,7 +193,7 @@ impl UiElement for Outline {
     fn toggle_hover(&mut self) {}
 
     fn priority(&self) -> i32 {
-        i32::MAX
+        50
     }
 
     fn true_pos(&self) -> Point {
@@ -278,9 +300,9 @@ impl TextEntry {
 impl UiElement for TextEntry {
     fn receive(&mut self, _data: &str) {}
 
-    fn activate(&mut self) -> Event {
+    fn activate(&mut self) -> Vec<Event> {
         self.active = true;
-        Event::Null
+        vec![Event::Null]
     }
 
     fn receive_text(&mut self, ev: event::KeyCode) -> bool {
