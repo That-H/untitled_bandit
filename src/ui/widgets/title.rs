@@ -1,4 +1,5 @@
 use super::*;
+use crossterm::terminal; 
 use std::time::Duration;
 use std::cell::RefCell;
 
@@ -49,9 +50,12 @@ impl UiElement for Title {
 
         if data == "clr" {
             for y in 0..self.win.data.len() {
-                for x in 0..self.win.data[0].len() {
-                    let _ = queue!(handle, cursor::MoveTo(x as u16 + self.screen_pos.x as u16, y as u16 + self.screen_pos.y as u16), style::Print(' '));
-                }
+                let _ = queue!(
+                    handle,
+                    cursor::MoveTo(0, y as u16 + self.screen_pos.y as u16),
+                    terminal::Clear(terminal::ClearType::CurrentLine),
+                    style::Print(' ')
+                );
             }
             *self.displayed.borrow_mut() = false;
             let _ = handle.flush();

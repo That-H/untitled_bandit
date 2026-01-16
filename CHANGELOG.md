@@ -1,3 +1,21 @@
+# 0.8.3-beta
+Fixes some visual bugs introduced by the alphabet.
+
+## New Content
+- New puzzles:
+    - +1 intermediate
+    - +1 advanced
+
+## General Changes
+- Made the puzzle selection window larger.
+- Added a title to the puzzles screen.
+- Added an indicator to the puzzle screen that displays how many stars have been collected
+in total. Also a completion progress percentage.
+
+## Regression Fixes
+- Fixed remnants of the end screen still being visible after going to the main menu.
+- Fixed the title's edges being visible when opening the alphabet.
+
 # 0.8.3-alpha2
 Alphabetical!
 

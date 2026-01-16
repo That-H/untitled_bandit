@@ -444,6 +444,9 @@ fn main() {
         let mut scene = ui::Scene::new(Point::new(52, 20), 16, 7);
 
         if !quick_restart {
+            // Clear the screen.
+            let _ = execute!(handle, terminal::Clear(terminal::ClearType::All));
+
             unsafe {
                 PUZZLE = None;
             }
@@ -496,7 +499,10 @@ fn main() {
                 basic_button
                     .clone()
                     .set_txt(String::from("Puzzles"))
-                    .set_event(ui::Event::ChangeScene(3))
+                    .set_events(vec![
+                        ui::Event::Broadcast(String::from("clr")),
+                        ui::Event::ChangeScene(3)
+                    ])
                     .set_screen_pos(Point::new(1, 3)),
             ),
             Point::new(1, 3),
@@ -627,14 +633,43 @@ fn main() {
         menu_container.add_scene(end_scene);
 
         // Puzzle selection screen.
-        let mut pzl_scene = ui::Scene::new(Point::new(51, 20), 18, 5).with_scrolling(true);
+        let mut pzl_scene = ui::Scene::new(Point::new(50, 12), 20, 13).with_scrolling(true);
+        
+        // Open the puzzle title file.
+        let mut f = fs::File::open(this_path.join("puzzle_title.txt")).unwrap();
+        let mut main_text = String::new();
+        f.read_to_string(&mut main_text);
+
+        let title = ui::widgets::Title::new(Point::new(25, 1), main_text, Some(delay));
+        pzl_scene.add_element(Box::new(title), Point::new(500, 500));
+
+        // Add an indicator for total stars collected.
+        let max_stars = stars_earned.len() * 2;
+        let collected = stars_earned.values().copied().sum::<u8>();
+        pzl_scene.add_element(
+            Box::new(
+                basic_button.clone()
+                    .set_txt(format!("Stars: {}/{}", collected, max_stars))
+                    .set_screen_pos(Point::new(1, 3))
+            ),
+            Point::new(-1, -1)
+        );
+        pzl_scene.add_element(
+            Box::new(
+                basic_button.clone()
+                    .set_txt(format!("Completion: {:.1}%", collected as f64 / max_stars as f64 * 100.0))
+                    .set_screen_pos(Point::new(1, 2))
+            ),
+            Point::new(-2, -1)
+        );
+            
 
         // Last seen difficulty during puzzle screen generation.
         let mut last_diff = -1;
 
         for (n, pzl) in pzls.iter().enumerate() {
             let pos = Point::new(1, n as i32 + 2);
-            let mut screen_pos = pos + Point::new(0, last_diff);
+            let mut screen_pos = pos + Point::new(0, last_diff + 4);
             let strs = if let Some(s) = stars_earned.get(&pzls[n].id) {
                 *s
             } else {
@@ -686,7 +721,10 @@ fn main() {
                         basic_button
                             .clone()
                             .set_txt(String::from("Main Menu"))
-                            .set_event(ui::Event::ChangeScene(0))
+                            .set_events(vec![
+                                ui::Event::Broadcast(String::from("clr")),
+                                ui::Event::ChangeScene(0)
+                            ])
                             .set_screen_pos(screen_pos + Point::new(0, 2)),
                     ),
                     pos + Point::new(0, 1),
@@ -694,7 +732,7 @@ fn main() {
             }
         }
         pzl_scene.add_element(
-            Box::new(ui::widgets::Outline::new('#'.grey(), 18)),
+            Box::new(ui::widgets::Outline::new('#'.grey(), 20)),
             Point::new(999, 999),
         );
 
