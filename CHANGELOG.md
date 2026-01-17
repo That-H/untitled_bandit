@@ -1,3 +1,18 @@
+# 0.9.0
+Cuts corners and adds the alphabet.
+
+## New Features
+- Adds the alphabet to give the player information on each enemy they have killed.
+- Cuts corners off of some rooms to make map generation more interesting.
+
+## Regression Fixes
+- Fixed some moves on ice being counted multiple times.
+
+## New Content
+- 16 new puzzles
+- 2 new normal enemies 
+- 2 new boss enemies
+
 # 0.8.3-beta
 Fixes some visual bugs introduced by the alphabet.
 

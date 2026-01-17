@@ -725,8 +725,7 @@ impl bn::Entity for En {
                 bn::Cmd::new_here().modify_entity(Box::new(move |e: &mut En| {
                     if stop {
                         e.vel = None;
-                    }
-                    if e.is_player {
+                    } else if e.is_player {
                         unsafe {
                             GLOBAL_TIME += 1;
                             if ENEMIES_REMAINING > 0 {
