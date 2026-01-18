@@ -51,10 +51,11 @@ impl MultiBox {
         temp: &EntityTemplate,
         meta: &TempMeta,
         kills: u32,
-        outline_ch: StyleCh,
         desc: &str
     ) {
         let mut info_win = windowed::Window::new(self.screen_pos);
+        let cur_clr = crate::WALL_CLRS[((*meta.floor_rang.start() + *meta.floor_rang.end()) / 2) as usize];
+        let outline_ch = '#'.with(cur_clr);
 
         let win_centre = Point::new(
             (Self::INFO_X_OFF + (Self::ATTACK_BOX_SIZE / 2) + 1) as i32,
@@ -135,7 +136,7 @@ impl MultiBox {
             for x in 0..=Self::ATTACK_BOX_SIZE {
                 let pos = Point::new((x + Self::INFO_X_OFF) as i32, (y + Self::INFO_Y_OFF) as i32);
 
-                let mut ch = '.'.stylize();
+                let mut ch = '.'.with(cur_clr);
                 if x == 0 || y == Self::ATTACK_BOX_SIZE {
                     ch = outline_ch;
                 }
@@ -149,6 +150,9 @@ impl MultiBox {
                     };
                 }
                 if temp.movement.contains(&(pos - win_centre)) {
+                    if *ch.content() == '.' {
+                        ch = ' '.stylize();
+                    }
                     ch = ch.on(style::Color::Rgb { r: 255, g: 190, b: 0 });
                 }
                 info_win.data[(y + Self::INFO_Y_OFF) as usize][(x + Self::INFO_X_OFF) as usize] = ch;

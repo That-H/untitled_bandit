@@ -1,3 +1,6 @@
+a
+Autonomous and artificial.
+
 b
 [bottom text]
 
@@ -10,11 +13,14 @@ Two of these spell ‘gg’.
 h
 Helpless most of the time.
 
+i
+Intends harm, but is rather insignificant.
+
 k
 Knightly and kingly.
 
 l
-Lorem Ipsum
+Does not like getting too close.
 
 o
 Obstruct its path and feel vengeance.
@@ -25,17 +31,29 @@ Just a tribute.
 r
 Rather rapid.
 
+s
+Suddenly summons small minions.
+
 v
 Very violent.
 
 w
 Wizardry.
 
+x
+Extremely capable of being a little annoying.
+
+z
+Zealous.
+
 B
 Get ready to receive some holy spirit!
 
 E
 Better than you.
+
+L
+Likes even longer range.
 
 O
 You are always in its way.

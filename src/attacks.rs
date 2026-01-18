@@ -11,11 +11,22 @@ mod damage;
 pub use damage::*;
 
 use crate::bn;
+use crate::entity;
+use dyn_clone::{clone_trait_object, DynClone};
+use std::fmt::Debug;
 
-type OtherEf = fn(Point, Point, &bn::Map<super::entity::En>) -> Vec<bn::Cmd<super::entity::En>>;
+/// Required to make Effects Clone.
+pub trait OtherEffectFn:
+    DynClone + Fn(Point, Point, &bn::Map<entity::En>) -> Vec<bn::Cmd<entity::En>>
+{
+}
+
+impl<T: DynClone + Fn(Point, Point, &bn::Map<entity::En>) -> Vec<bn::Cmd<entity::En>>> OtherEffectFn for T {}
+
+clone_trait_object! {OtherEffectFn}
 
 /// Some effect that can occur as a result of an attack.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Effect {
     /// Apply the damage instance to the entity.
     DoDmg(DmgInst),
@@ -25,7 +36,20 @@ pub enum Effect {
     /// - Map in which the attack takes place
     ///
     /// Returns a list of commands to be executed.
-    Other(OtherEf),
+    Other(Box<dyn OtherEffectFn>),
+}
+
+impl Debug for Effect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DoDmg(inst) => {
+                inst.fmt(f)
+            }
+            Self::Other(_) => {
+                write!(f, "Effect::Other")
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

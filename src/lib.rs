@@ -296,6 +296,14 @@ pub enum ActionType {
     ForceMelee(Point, usize),
     /// Use the ranged attack at the given index.
     Fire(usize),
+    /// Go to the furthest valid tile from the player using the enemy's movement pattern, if the
+    /// player is within the given range (using manhattan distance). Fails if there is no way to
+    /// get further from the player in one move.
+    Flee(i32),
+    /// Summon an enemy in an adjacent position. Chooses the one closest to the player.
+    Summon(entity::EntityTemplate),
+    /// Summon a missile in the closest adjacent position to the player that does the given damage.
+    SummonMissile(u32),
     /// Pathfind towards the player.
     Pathfind,
     /// Do nothing.
@@ -306,6 +314,9 @@ pub enum ActionType {
     Chain(Box<ActionType>, Box<ActionType>),
     /// Invariably moves the action idx and does the action there.
     Jump(usize),
+    /// Repeatedly does the contained action until it fails, then immediately does the next action.
+    /// Does not support being nested within another action.
+    Repeat(Box<ActionType>),
     /// Does the action at the first idx given if the predicate evaluates to true,
     /// otherwise does the action at the other idx given.
     /// As arguments, the predicate takes the current map, the entity currently acting,
@@ -326,8 +337,12 @@ impl fmt::Display for ActionType {
             Self::TryMelee | Self::ForceMelee(_, _) => "A",
             Self::Pathfind => "P",
             Self::Wait => "W",
-            Self::Multi(a, b) => &format!("M({}{})", a.to_string(), b.to_string()),
-            Self::Chain(a, b) => &format!("C({}{})", a.to_string(), b.to_string()),
+            Self::Flee(range) => &format!("F{range}"),
+            Self::Summon(temp) => &format!("S{}", temp.ch.content()),
+            Self::SummonMissile(dmg) => &format!("!{dmg}"),
+            Self::Multi(a, b) => &format!("M({}{})", a, b),
+            Self::Chain(a, b) => &format!("C({}{})", a, b),
+            Self::Repeat(a) => &format!("R({a})"),
             Self::Jump(idx) => &format!("J{idx}"),
             _ => "?",
         };

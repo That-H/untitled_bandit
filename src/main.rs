@@ -633,7 +633,7 @@ fn main() {
         menu_container.add_scene(end_scene);
 
         // Puzzle selection screen.
-        let mut pzl_scene = ui::Scene::new(Point::new(50, 12), 20, 13).with_scrolling(true);
+        let mut pzl_scene = ui::Scene::new(Point::new(49, 12), 22, 13).with_scrolling(true);
         
         // Open the puzzle title file.
         let mut f = fs::File::open(this_path.join("puzzle_title.txt")).unwrap();
@@ -732,7 +732,7 @@ fn main() {
             }
         }
         pzl_scene.add_element(
-            Box::new(ui::widgets::Outline::new('#'.grey(), 20)),
+            Box::new(ui::widgets::Outline::new('#'.grey(), 22)),
             Point::new(999, 999),
         );
 
@@ -841,7 +841,7 @@ fn main() {
         };
 
         let desc = if LazyLock::<HashMap<char, u32>>::force(&kill_read).is_empty() {
-            "Too bad you don't know your ABCs..."
+            "Come back when you've killed more enemies..."
         } else {
             "???"
         };
@@ -850,7 +850,6 @@ fn main() {
             &def_temp,
             &def_meta,
             0,
-            '#'.grey(),
             desc,
         );
 
@@ -900,7 +899,6 @@ fn main() {
                         cur_temp,
                         &meta[&ch],
                         count,
-                        '#'.grey(),
                         descs.get(&ch).unwrap(),
                     );
 

@@ -1,3 +1,27 @@
+# 0.9.1-alpha
+Content update with some slight alphabet visual changes.
+
+## New Content
+- Letters a, i, s and x.
+- Boss L, which fires missiles.
+- New puzzles:
+    - +2 beginner
+    - +2 intermediate
+    - +3 advanced
+    - +1 extreme
+
+## General Changes
+- Made the enemy budget for a room dependent on the number of free tiles within the room instead of the 
+area of its bounding rect.
+- Made the colour of the info box in the alphabet dependent on the range of floors on which the enemy spawns.
+- Made the '.' in the info box disappear if it is highlighted.
+- Changed the message that appears in the alphabet screen when no enemies have been killed so that 
+it is more helpful (it is now "Come back when you've killed more enemies...")
+
+## Balance Changes
+- Moved the Q as it is not very difficult to kill.
+    - Floor range 1-1 -> 0-0
+
 # 0.9.0
 Cuts corners and adds the alphabet.
 

@@ -7,6 +7,7 @@ use crate::bn;
 use attacks::*;
 use bn::Entity;
 use std::cell::RefCell;
+use std::cmp;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
@@ -93,16 +94,18 @@ impl From<String> for LogMsg {
 }
 
 /// Describes the way in which an entity differs from a normal entity.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Special {
     /// Locked door.
     WallSentry,
+    /// Moving projectile.
+    Missile,
     /// Anything that isn't special.
     Not,
 }
 
 /// A template for creating an entity from.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct EntityTemplate {
     pub max_hp: u32,
     pub actions: Vec<ActionType>,
@@ -242,12 +245,12 @@ impl bn::Entity for En {
     fn repr(&self) -> <<Self as Entity>::Tile as bn::Tile>::Repr {
         if !self.dormant || *REVEALED.read().unwrap() {
             // Required as the player has no action queue.
-            if self.is_player {
+            if self.is_player || self.special == Special::Missile {
                 return self.ch;
             }
             // Highlight if about to act.
             match self.actions.get(self.count).unwrap() {
-                ActionType::Wait | ActionType::Pathfind => self.ch,
+                ActionType::Wait | ActionType::Pathfind | ActionType::Flee(_) => self.ch,
                 _ => self.ch.on_red(),
             }
         } else {
@@ -259,22 +262,25 @@ impl bn::Entity for En {
     where
         Self: Sized,
     {
-        if self.is_dead()
-            && let Special::Not = self.special
-        {
-            // Write to the global kill counter for this enemy type if this is not a puzzle.
-            if unsafe { PUZZLE.is_none() } {
-                *KILL_COUNTS.write().unwrap().entry(*self.ch.content()).or_insert(0) += 1;
-            }
-            if self.is_player {
-                unsafe { DEAD = true }
-            } else {
-                let mut handle = LOG_MSGS.write().unwrap();
-                handle.push(format!("{} is dead", *self.ch.content()).into());
-                unsafe {
-                    ENEMIES_REMAINING -= 1;
-                    KILLED += 1;
+        if self.is_dead() {
+            if self.special == Special::Not {
+                // Write to the global kill counter for this enemy type if not playing a puzzle.
+                if unsafe { PUZZLE.is_none() } {
+                    *KILL_COUNTS.write().unwrap().entry(*self.ch.content()).or_insert(0) += 1;
                 }
+                if self.is_player {
+                    unsafe { DEAD = true }
+                } else {
+                    let mut handle = LOG_MSGS.write().unwrap();
+                    handle.push(format!("{} is dead", *self.ch.content()).into());
+                    unsafe {
+                        ENEMIES_REMAINING -= 1;
+                        KILLED += 1;
+                    }
+                }
+            }
+
+            if !self.is_player {
                 cmd.queue(bn::Cmd::new_here().delete_entity());
             }
             return;
@@ -288,8 +294,14 @@ impl bn::Entity for En {
 
                 return;
             }
+            Special::Missile if unsafe { ENEMIES_REMAINING == 0 } => {
+                // Don't want leftover missiles, so die if no enemies left.
+                cmd.queue(bn::Cmd::new_here().delete_entity());
 
-            Special::Not => (),
+                return;
+            }
+
+            _ => (),
         }
 
         let mut acted = false;
@@ -339,6 +351,21 @@ impl bn::Entity for En {
             cmd.queue_many(cmds);
         };
 
+        // Return the valid adjacent position that is closest to the target position.
+        let closest_valid = |cmd: &bn::Commands<'_, Self>, target: Point, from: Point| {
+            let mut best = None;
+            let mut best_dist = 999;
+            for adj in from.get_all_adjacent() {
+                let dist = adj.dist_squared(target);
+                if dist < best_dist && verify_pos(&cmd, adj) {
+                    best.replace(adj);
+                    best_dist = dist;
+                }
+            }
+
+            best
+        };
+
         // Perform a melee attack in the given direction, unless a ranged
         // attack is specified. In that case, the ranged attack at the provided index occurs.
         let do_attack = |pos: Point,
@@ -386,25 +413,29 @@ impl bn::Entity for En {
                                         move |e: &mut En| {
                                             let old = *e.hp;
                                             e.apply_dmg(dmg_inst);
-                                            let mut handle = LOG_MSGS.write().unwrap();
-                                            let e_ch = *e.ch.content();
-                                            handle.push(
-                                                format!(
-                                                    "{} {} -> {}",
-                                                    ch,
-                                                    dmg_inst.total_dmg(),
-                                                    e_ch
-                                                )
-                                                .into(),
-                                            );
-                                            if e_ch != WALL_SENTRY_CHAR {
+
+                                            // Only say anything if this is a normal entity.
+                                            if e.special == Special::Not {
+                                                let mut handle = LOG_MSGS.write().unwrap();
+                                                let e_ch = *e.ch.content();
                                                 handle.push(
                                                     format!(
-                                                        "{} hp: {}/{}->{}/{}",
-                                                        e_ch, old, e.hp.max, *e.hp, e.hp.max
+                                                        "{} {} -> {}",
+                                                        ch,
+                                                        dmg_inst.total_dmg(),
+                                                        e_ch
                                                     )
                                                     .into(),
                                                 );
+                                                if e_ch != WALL_SENTRY_CHAR {
+                                                    handle.push(
+                                                        format!(
+                                                            "{} hp: {}/{}->{}/{}",
+                                                            e_ch, old, e.hp.max, *e.hp, e.hp.max
+                                                        )
+                                                        .into(),
+                                                    );
+                                                }
                                             }
                                         },
                                     )));
@@ -516,6 +547,60 @@ impl bn::Entity for En {
                             }
                         }
                     }
+                    ActionType::Summon(temp) => {
+                        let pl = unsafe { PLAYER };
+                        let best = closest_valid(&cmd, pl, pos);
+
+                        if let Some(p) = best {
+                            let mut new_en = En::from_template(&temp, false, false);
+                            new_en.acted = true;
+                            cmd.queue(bn::Cmd::new_on(p).create_entity(new_en));
+                            acted = true;
+                            unsafe { ENEMIES_REMAINING += 1; }
+                        }
+                    }
+                    ActionType::SummonMissile(dmg) => {
+                        let pl = unsafe { PLAYER };
+                        let best = closest_valid(&cmd, pl, pos);
+
+                        if let Some(p) = best {
+                            let mut new_en = templates::get_missile(
+                                p - pos,
+                                style::Color::DarkRed,
+                                templates::get_explosion(dmg, 1, ' '.on_red())
+                            );
+                            new_en.acted = true;
+                            cmd.queue(bn::Cmd::new_on(p).create_entity(new_en));
+                            acted = true;
+                        }
+                    }
+                    ActionType::Flee(range) => {
+                        let pl = unsafe { PLAYER };
+                        if range >= pl.manhattan_dist(pos) {
+                            let best_dist = pos.dist_squared(pl);
+
+                            let Some(&best_found) = self.movement.iter().max_by(|a, b| {
+                                let a = **a + pos;
+                                let b = **b + pos;
+                                // Don't wanna go there if its not valid to walk on.
+                                if !verify_pos(&cmd, a) {
+                                    return cmp::Ordering::Less;
+                                }
+                                if !verify_pos(&cmd, b) {
+                                    return cmp::Ordering::Greater;
+                                }
+                                a.dist_squared(pl).cmp(&b.dist_squared(pl))
+                                    .then_with(|| b.x.cmp(&a.x))
+                                    .then_with(|| a.y.cmp(&b.y))
+                            }) else { panic!("{} should have a movement pattern", self.ch.content()) };
+                            
+                            let cur_nx = best_found + pos;
+                            if cur_nx.dist_squared(pl) > best_dist && verify_pos(&cmd, cur_nx) {
+                                acted = true;
+                                nx = Some(cur_nx);
+                            }
+                        }
+                    }
                     ActionType::Pathfind => {
                         let goals = cur_en
                             .atks
@@ -542,16 +627,28 @@ impl bn::Entity for En {
                         (pos, acted, new_count) =
                             handle_action.borrow()((*first).clone(), cmd, cur_en, pos);
                         if !acted {
-                            (pos, _, new_count) =
+                            (pos, acted, new_count) =
                                 handle_action.borrow()((*fail).clone(), cmd, cur_en, pos);
-                            acted = true;
                         }
                     }
                     ActionType::Jump(idx) => {
+                        let old = new_count;
                         (pos, acted, new_count) =
                             handle_action.borrow()(cur_en.actions[idx].clone(), cmd, cur_en, pos);
+                        if old == new_count {
+                            new_count = idx + 1;
+                        }
+                    }
+                    ActionType::Repeat(act) => {
+                        (pos, acted, _) = handle_action.borrow()((*act).clone(), cmd, cur_en, pos);
+                        if acted {
+                            new_count -= 1;
+                        } else {
+                            (pos, acted, new_count) = handle_action.borrow()(cur_en.actions[new_count].clone(), cmd, cur_en, pos);
+                        }
                     }
                     ActionType::CondBranch(idx_t, idx_f, clos) => {
+                        let old = new_count;
                         let nx_idx = if clos(&*cmd, self, pos) { idx_t } else { idx_f };
                         (pos, acted, new_count) = handle_action.borrow()(
                             cur_en.actions[nx_idx].clone(),
@@ -559,6 +656,9 @@ impl bn::Entity for En {
                             cur_en,
                             pos,
                         );
+                        if old == new_count {
+                            new_count = nx_idx + 1;
+                        }
                     }
                     ActionType::Arbitrary(clos) => {
                         let cmds = clos(&*cmd, self, pos);
@@ -775,7 +875,7 @@ impl bn::Entity for En {
     fn priority(&self) -> u32 {
         unsafe {
             match self.special {
-                Special::Not => {
+                Special::Not | Special::Missile => {
                     if self.dormant {
                         0
                     } else if self.is_dead() {
@@ -786,6 +886,8 @@ impl bn::Entity for En {
                         1
                     } else if !self.acted {
                         2
+                    } else if ENEMIES_REMAINING == 0 && self.special == Special::Missile {
+                        u32::MAX
                     } else {
                         0
                     }

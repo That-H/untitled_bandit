@@ -146,7 +146,13 @@ pub fn gen_floor(
 
     // Generate enemies.
     for (n, r) in rooms.iter().enumerate().skip(1) {
-        let mut budget = (r.wid * r.hgt) as u32 / 3 * unsafe { FLOORS_CLEARED + 1 };
+        let mut area = 0;
+        for pos in r.inner_cells() {
+            if let Some(Cell::Inner(_)) = grid.get(&pos) {
+                area += 1;
+            }
+        }
+        let mut budget = area as u32 / 2 * unsafe { FLOORS_CLEARED + 1 };
         let mut cells: Vec<Point> = r.inner_cells().collect();
         cells.shuffle(rng);
 

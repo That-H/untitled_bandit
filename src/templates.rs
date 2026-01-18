@@ -1,6 +1,6 @@
 //! Generates templates for enemies and the player that will be used in the map.
 
-use crate::*;
+use crate::{tile_presets::ARROWS, *};
 use attacks::*;
 use entity::*;
 use rand::prelude::IndexedRandom;
@@ -9,6 +9,7 @@ pub const PLAYER_CHARACTER: char = '@';
 pub const PLAYER_COLOUR: style::Color = style::Color::Green;
 pub const RING_CHARS: [char; 6] = ['╔', '═', '╗', '║', '╝', '╚'];
 pub const DIAG_CHARS: [char; 4] = ['╱', '╲', '╱', '╲'];
+pub const DIAG_ARROWS: [char; 8] = ['↙', '←', '↖', '↓', '↑', '↘', '→', '↗'];
 
 pub mod metadata;
 
@@ -32,12 +33,12 @@ pub fn get_hvy_atks(dmg: u32, chars: impl IntoIterator<Item = char>, clr: style:
     AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
         vec![
             Effect::DoDmg(DmgInst::dmg(dmg, 1.0)),
-            Effect::Other(|from, to, _map| {
+            Effect::Other(Box::new(|from, to, _map| {
                 vec![
                     bn::Cmd::new_on(to)
                         .modify_entity(Box::new(move |e: &mut En| e.vel = Some(to - from))),
                 ]
-            }),
+            })),
         ],
         clr,
         7,
@@ -167,9 +168,6 @@ pub fn get_explosion(dmg: u32, radius: i32, ch: StyleCh) -> MeleeAtk {
     for y in -radius..=radius {
         for x in -radius..=radius {
             let p = Point::new(x, y);
-            if p == Point::ORIGIN {
-                continue;
-            }
             if Point::ORIGIN.manhattan_dist(p) <= radius {
                 positions.push(p);
             }
@@ -188,7 +186,6 @@ pub fn get_explosion(dmg: u32, radius: i32, ch: StyleCh) -> MeleeAtk {
     MeleeAtk::new(
         vec![
             Effect::DoDmg(DmgInst::dmg(dmg, 1.0)),
-            Effect::Other(|_pos, _target, _map| vec![bn::Cmd::new_here().delete_entity()]),
         ],
         positions,
         fx,
@@ -204,19 +201,64 @@ pub fn get_missile(dir: Point, clr: style::Color, explosion: MeleeAtk) -> En {
     En::new(
         1,
         false,
-        vec![ActionType::Chain(
-            Box::new(ActionType::TryMelee),
-            Box::new(ActionType::Chain(
+        vec![
+            ActionType::Chain(
                 Box::new(ActionType::TryMove(dir)),
                 Box::new(ActionType::ForceMelee(Point::ORIGIN, 0)),
-            )),
-        )],
-        FOUR_POS_ATK[dir.dir()].with(clr),
-        Special::Not,
+            ),
+        ],
+        ARROWS[dir.dir()].with(clr),
+        Special::Missile,
         Vec::new(),
         atk_pat,
         false,
     )
+}
+
+/// Return an effect that pushes the target and damages them if they collide with something.
+pub fn get_push_effect(collide_dmg: u32, push_strength: i32) -> Effect {
+    Effect::Other(Box::new(move |from, to, map| {
+        let disp = from - to;
+        let new = to - disp;
+
+        unsafe {
+            let mut collide = None;
+            if let Some(e) = map.get_ent(new) {
+                collide = Some(*e.ch.content());
+            } else if let Some(t) = map.get_map(new) && t.blocking {
+                collide = Some(*t.repr().content());
+            }
+
+            // Just do damage to them if there is something in the way.
+            if let Some(ch) = collide {
+                return vec![bn::Cmd::new_on(to).modify_entity(Box::new(move |e: &mut En| {
+                    let old = *e.hp;
+                    e.apply_dmg(DmgInst::dmg(collide_dmg, 1.0));
+                    let mut write = LOG_MSGS.write().unwrap();
+                    write.push(LogMsg::new(format!("{} collides with {ch}", e.ch.content())));
+                    write.push(
+                        LogMsg::new(
+                            format!(
+                                "{PLAYER_CHARACTER} hp: {}/{}->{}/{}",
+                                old, e.hp.max, *e.hp, e.hp.max,
+                            )
+                        )
+                    );
+                }))]
+            }
+
+            // Make sure we are actually moving the player before doing this.
+            if PLAYER == to {
+                PLAYER = new;
+            }
+        }
+        vec![
+            bn::Cmd::new_on(to).modify_entity(Box::new(move |e: &mut En| {
+                e.vel = Some(disp * -push_strength);
+            })),
+            bn::Cmd::new_on(to).move_to(new)
+        ]
+    }))
 }
 
 /// Return a vector of entity templates for use in the game. First vector is for normal enemies,
@@ -245,6 +287,8 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
 
     // Manhattan movement.
     let manhattan = Point::ORIGIN.get_all_adjacent();
+    let mut long_manhattan = manhattan.clone();
+    long_manhattan.extend(get_manhattan_n(2));
 
     // Manhattan movement exactly two tiles in the same direction.
     let manhattan2: Vec<Point> = get_manhattan_n(2);
@@ -274,6 +318,11 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
     // Default attack pattern.
     let default_atks = get_default_atks(1, FOUR_POS_ATK, style::Color::Red);
 
+    // Attack pattern for the i.
+    let mut i_atks = default_atks.clone();
+    i_atks.melee_atks.remove(&Point::new(1, 0));
+    i_atks.melee_atks.remove(&Point::new(-1, 0));
+
     // Long default attack.
     let mut spear = default_atks.clone();
 
@@ -284,6 +333,29 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 .push((pos * 2, Vfx::new_opaque(DIR_CHARS[pos.dir()].red(), 7)));
             for p in atk.place.iter_mut() {
                 *p = *p * 2;
+            }
+        }
+    }
+
+    // Very long default attack.
+    let mut long_spear = default_atks.clone();
+
+    for (_d, atks) in long_spear.melee_atks.iter_mut() {
+        for atk in atks.iter_mut() {
+            let pos = atk.place[0];
+            atk.fx.push(
+                (
+                    pos * 2, atk.fx
+                        .last()
+                        .unwrap()
+                        .1
+                        .clone()
+                )
+            );
+            atk.fx
+                .push((pos * 3, Vfx::new_opaque(DIR_CHARS[pos.dir()].red(), 7)));
+            for p in atk.place.iter_mut() {
+                *p = *p * 3;
             }
         }
     }
@@ -359,7 +431,7 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
 
     // Pull the target towards self, without damaging them.
     let mut wizardry = AtkPat::from_atks(MeleeAtk::bulk_new::<4>(
-        vec![Effect::Other(|from, to, map| {
+        vec![Effect::Other(Box::new(|from, to, map| {
             let disp = (from - to) / 2;
             let new = to + disp;
 
@@ -374,7 +446,7 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 }
             }
             vec![bn::Cmd::new_on(to).move_to(new)]
-        })],
+        }))],
         style::Color::Magenta,
         7,
         Vfx::new_opaque('?'.stylize(), 7),
@@ -390,6 +462,15 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
             }
         }
     }
+
+    // Push the target away from self. Does damage if there is anything in the way.
+    let reverse_wizardry = AtkPat::from_atks(MeleeAtk::bulk_new::<8>(
+        vec![get_push_effect(1, 1)],
+        style::Color::Yellow,
+        7,
+        Vfx::new_opaque('?'.stylize(), 7),
+        DIAG_ARROWS,
+    ));
 
     // Like wizardry, but with a weird default attack included.
     let mut wizardry_plus = wizardry.clone();
@@ -587,6 +668,23 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 ch: 'o'.stylize(),
                 atks: default_atks.clone(),
             },
+            get_minion(),
+            EntityTemplate {
+                max_hp: 2,
+                actions: vec![
+                    ActionType::Repeat(
+                        Box::new(ActionType::TryMove(Point::new(0, 1)))
+                    ),
+                    ActionType::TryMove(Point::new(0, -1)),
+                    ActionType::Repeat(
+                        Box::new(ActionType::TryMove(Point::new(0, -1)))
+                    ),
+                    ActionType::TryMove(Point::new(0, 1)),
+                ],
+                movement: vec![Point::new(0, 1), Point::new(0, -1)],
+                ch: 'i'.stylize(),
+                atks: i_atks.clone(),
+            },
             EntityTemplate {
                 max_hp: 2,
                 actions: vec![
@@ -628,6 +726,29 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 ch: 'q'.stylize(),
                 atks: spear.clone(),
             },
+            EntityTemplate {
+                max_hp: 2,
+                actions: vec![ActionType::Chain(
+                    Box::new(ActionType::TryMelee),
+                    Box::new(ActionType::Pathfind),
+                )],
+                movement: long_manhattan.clone(),
+                ch: 'x'.stylize(),
+                atks: reverse_wizardry.clone(),
+            },
+            EntityTemplate {
+                max_hp: 1,
+                actions: vec![
+                    ActionType::Flee(3),
+                    ActionType::Flee(3),
+                    ActionType::Flee(3),
+                    ActionType::Flee(3),
+                    ActionType::Summon(get_minion()),
+                ],
+                movement: manhattan.clone(),
+                ch: 's'.stylize(),
+                atks: AtkPat::empty(),
+            },
         ],
         // Capitals start here.
         vec![
@@ -645,6 +766,19 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 movement: diag_plus.clone(),
                 ch: 'B'.stylize(),
                 atks: get_holiness(3, 15),
+            },
+            EntityTemplate {
+                max_hp: 4,
+                actions: vec![
+                    ActionType::Pathfind,
+                    ActionType::Pathfind,
+                    ActionType::SummonMissile(2),
+                    ActionType::Pathfind,
+                    ActionType::SummonMissile(2),
+                ],
+                movement: manhattan.clone(),
+                ch: 'L'.stylize(),
+                atks: long_spear.clone(),
             },
             EntityTemplate {
                 max_hp: 2,
@@ -784,4 +918,21 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
             },
         ],
     )
+}
+
+/// Create the letter a for use as a minion.
+pub fn get_minion() -> EntityTemplate {
+    EntityTemplate {
+        max_hp: 1,
+        actions: vec![
+            ActionType::Pathfind,
+            ActionType::Chain(
+                Box::new(ActionType::TryMelee),
+                Box::new(ActionType::Pathfind),
+            ),
+        ],
+        movement: Rect::new(-1, 1, 3, 3).edges().collect(),
+        ch: 'a'.stylize(),
+        atks: get_default_atks(1, FOUR_POS_ATK, style::Color::Red)
+    }
 }
