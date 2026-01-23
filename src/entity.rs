@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
 use std::sync::{LazyLock, RwLock};
+use map_gen::bandit_gen::MAX_WIDTH;
 
 /// Type of action the player will perform.
 pub static mut ACTION: ActionType = ActionType::Wait;
@@ -41,7 +42,9 @@ pub static LOG_MSGS: RwLock<Vec<LogMsg>> = RwLock::new(Vec::new());
 pub static LAST_DOOR: RwLock<Option<Point>> = RwLock::new(None);
 /// Walk through the waller.
 pub static NO_CLIP: RwLock<bool> = RwLock::new(false);
-/// Times each enemy has been killed.
+/// Whether floor 4 is accessible.
+pub static CAN_F4: RwLock<bool> = RwLock::new(false);
+/// Times each enemy has been killed, ever.
 pub static KILL_COUNTS: RwLock<LazyLock<HashMap<char, u32>>> = RwLock::new(LazyLock::new(|| {
     match save_file::load_kills() {
         Ok(map) => map,
@@ -57,8 +60,8 @@ pub static mut PUZZLE: Option<usize> = None;
 
 pub const KEY_CLRS: [style::Color; 4] = [
     style::Color::DarkRed,
-    style::Color::Green,
     style::Color::Yellow,
+    style::Color::Green,
     style::Color::Blue,
 ];
 pub const KEY_CLRS_COUNT: usize = KEY_CLRS.len();
@@ -78,6 +81,11 @@ impl LogMsg {
             txt,
             t_stamp: unsafe { GLOBAL_TIME },
         }
+    }
+
+    /// Create a message that informs of a change in health.
+    pub fn hp_change(old: u32, datum: &Datum<u32>, target: char) -> Self {
+        Self::new(format!("{target} hp: {old}/{}->{}/{}", datum.max, *datum, datum.max))
     }
 }
 
@@ -100,6 +108,10 @@ pub enum Special {
     WallSentry,
     /// Moving projectile.
     Missile,
+    /// Enemy that doesn't count towards the kill count.
+    Minion,
+    /// Just for the final boss.
+    FinalBoss,
     /// Anything that isn't special.
     Not,
 }
@@ -263,21 +275,60 @@ impl bn::Entity for En {
         Self: Sized,
     {
         if self.is_dead() {
-            if self.special == Special::Not {
-                // Write to the global kill counter for this enemy type if not playing a puzzle.
-                if unsafe { PUZZLE.is_none() } {
-                    *KILL_COUNTS.write().unwrap().entry(*self.ch.content()).or_insert(0) += 1;
-                }
-                if self.is_player {
-                    unsafe { DEAD = true }
-                } else {
-                    let mut handle = LOG_MSGS.write().unwrap();
-                    handle.push(format!("{} is dead", *self.ch.content()).into());
-                    unsafe {
-                        ENEMIES_REMAINING -= 1;
-                        KILLED += 1;
+            match self.special {
+                Special::Not | Special::Minion | Special::FinalBoss => {
+                    // Write to the global kill counter for this enemy type if not playing a puzzle.
+                    if unsafe { PUZZLE.is_none() } {
+                        *KILL_COUNTS.write().unwrap().entry(*self.ch.content()).or_insert(0) += 1;
+                    }
+                    if self.is_player {
+                        unsafe { DEAD = true }
+                    } else {
+                        let mut handle = LOG_MSGS.write().unwrap();
+                        handle.push(format!("{} is dead", *self.ch.content()).into());
+                        unsafe {
+                            if self.special != Special::Minion {
+                                KILLED += 1;
+                            }
+                            ENEMIES_REMAINING -= 1;
+                        }
+                    }
+
+                    if self.special == Special::FinalBoss {
+                        let mut rm_rect = rect::Rect::new(-MAX_WIDTH / 2, MAX_WIDTH / 2, MAX_WIDTH, MAX_WIDTH);
+                        // Put the player in the middle.
+                        cmd.queue(bn::Cmd::new_on(unsafe { PLAYER }).move_to(Point::ORIGIN));
+
+                        for i in 1..=MAX_WIDTH / 2 {
+                            for p in rm_rect.edges() {
+                                let t = cmd.get_map(p).unwrap();
+                                let mut fx = Vfx::new_opaque(t.repr(), 10 * i as usize);
+                                fx.frames.append(&mut vec![Frame::Opaque(' '.stylize()); 120 - (10 * i as usize)]);
+                                cmd.queue(bn::Cmd::new_on(p).create_effect(fx));
+                            }
+                            rm_rect.left += 1;
+                            rm_rect.top -= 1;
+                            rm_rect.wid -= 2;
+                            rm_rect.hgt -= 2;
+                        }
+                        let i = MAX_WIDTH / 2 + 2;
+                        let mut fx = Vfx::new_opaque(cmd.get_ent(unsafe { PLAYER }).unwrap().repr(), 10 * i as usize);
+                        fx.frames.append(&mut vec![Frame::Opaque(' '.stylize()); 120 - (10 * i as usize)]);
+                        cmd.queue(bn::Cmd::new_on(Point::ORIGIN).create_effect(fx));
+
+                        unsafe { 
+                            NEXT_FLOOR = true;
+                            // Has to be done at the end to avoid crashing when trying to the
+                            // entity at PLAYER.
+                            PLAYER = Point::ORIGIN;
+                        }
+                        // Return early so that we don't delete the player.
+                        if pos == Point::ORIGIN {
+                            return;
+                        }
                     }
                 }
+                _ => (),
             }
 
             if !self.is_player {
@@ -414,8 +465,8 @@ impl bn::Entity for En {
                                             let old = *e.hp;
                                             e.apply_dmg(dmg_inst);
 
-                                            // Only say anything if this is a normal entity.
-                                            if e.special == Special::Not {
+                                            // Only say anything if this is not a wall sentry.
+                                            if e.special != Special::WallSentry {
                                                 let mut handle = LOG_MSGS.write().unwrap();
                                                 let e_ch = *e.ch.content();
                                                 handle.push(
@@ -429,11 +480,7 @@ impl bn::Entity for En {
                                                 );
                                                 if e_ch != WALL_SENTRY_CHAR {
                                                     handle.push(
-                                                        format!(
-                                                            "{} hp: {}/{}->{}/{}",
-                                                            e_ch, old, e.hp.max, *e.hp, e.hp.max
-                                                        )
-                                                        .into(),
+                                                        LogMsg::hp_change(old, &e.hp, e_ch)
                                                     );
                                                 }
                                             }
@@ -554,6 +601,7 @@ impl bn::Entity for En {
                         if let Some(p) = best {
                             let mut new_en = En::from_template(&temp, false, false);
                             new_en.acted = true;
+                            new_en.special = Special::Minion;
                             cmd.queue(bn::Cmd::new_on(p).create_entity(new_en));
                             acted = true;
                             unsafe { ENEMIES_REMAINING += 1; }
@@ -628,6 +676,14 @@ impl bn::Entity for En {
                             handle_action.borrow()((*first).clone(), cmd, cur_en, pos);
                         if !acted {
                             (pos, acted, new_count) =
+                                handle_action.borrow()((*fail).clone(), cmd, cur_en, pos);
+                        }
+                    }
+                    ActionType::Bridge(first, fail) => {
+                        (pos, acted, new_count) =
+                            handle_action.borrow()((*first).clone(), cmd, cur_en, pos);
+                        if acted {
+                            (pos, _, new_count) =
                                 handle_action.borrow()((*fail).clone(), cmd, cur_en, pos);
                         }
                     }
@@ -734,14 +790,18 @@ impl bn::Entity for En {
                             // Reveal all cells of the room via floodfill.
                             while let Some(p) = rev_stack.pop() {
                                 if let Some(cl) = cmd.get_map(p) {
-                                    // Already visited to ignore.
+                                    // Already visited so ignore.
                                     if revd.contains(&p) {
                                         continue;
                                     } else {
                                         // Push adjacent cells if this one is eligible.
-                                        if !cl.blocking && !cl.door {
+                                        if !cl.blocking {
                                             for adj in p.get_all_adjacent_diagonal() {
-                                                rev_stack.push(adj);
+                                                if !cl.door {
+                                                    rev_stack.push(adj);
+                                                } else if let Some(t) = cmd.get_map(adj) && (t.door || t.locked.is_some()) {
+                                                    rev_stack.push(adj);
+                                                }
                                             }
                                         }
 
@@ -875,7 +935,7 @@ impl bn::Entity for En {
     fn priority(&self) -> u32 {
         unsafe {
             match self.special {
-                Special::Not | Special::Missile => {
+                Special::Not | Special::Missile | Special::Minion | Special::FinalBoss => {
                     if self.dormant {
                         0
                     } else if self.is_dead() {

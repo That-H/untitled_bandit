@@ -17,18 +17,20 @@ pub const DELAY: u64 = 30;
 pub const VFX_DELAY: u64 = 200;
 pub const MAP_OFFSET: usize = 0;
 /// Floor where the game ends.
-pub const KILL_SCREEN: usize = 4;
-pub const DIR_CHARS: [char; KILL_SCREEN] = ['v', '<', '^', '>'];
+pub const KILL_SCREEN: usize = 6;
+pub const DIR_CHARS: [char; 4] = ['v', '<', '^', '>'];
 pub const DOOR_CHAR: char = '/';
 pub const DOOR_CLRS: [style::Color; KILL_SCREEN] = [
     style::Color::White,
     style::Color::DarkGrey,
     style::Color::Rgb {
-        r: 255,
+        r: 25,
         g: 165,
-        b: 0,
+        b: 25,
     },
+    style::Color::Red,
     style::Color::DarkYellow,
+    style::Color::White,
 ];
 
 /// Width of the terminal in characters.
@@ -39,8 +41,10 @@ pub const TERMINAL_HGT: u16 = 30;
 pub const WALL_CLRS: [style::Color; KILL_SCREEN] = [
     style::Color::DarkGrey,
     style::Color::White,
-    style::Color::DarkMagenta,
+    style::Color::DarkYellow,
+    style::Color::Rgb { r: 100, g: 100, b: 190 },
     style::Color::DarkRed,
+    style::Color::Rgb { r: 120, g: 10, b: 10 },
 ];
 pub const ICE_CHAR: char = '*';
 pub const ICE_CLR: style::Color = style::Color::Cyan;
@@ -88,12 +92,10 @@ pub fn get_assets_path() -> std::path::PathBuf {
 /// Display a window container into the terminal window.
 pub fn print_win(win_cont: &windowed::Container<style::StyledContent<char>>) {
     let mut handle = io::stdout();
+    let buf = win_cont.get_buffer();
 
-    // Print the screen.
-    let screen = win_cont.to_string_with_default(TERMINAL_WID, TERMINAL_HGT - 1, ' '.stylize());
-
-    for (y, line) in screen.lines().enumerate() {
-        let _ = queue!(handle, cursor::MoveTo(0, y as u16), style::Print(line));
+    for change in win_cont.changed() {
+        let _ = queue!(handle, cursor::MoveTo(change.x as u16, change.y as u16), style::Print(buf[change]));
     }
 
     let _ = handle.flush();
@@ -152,7 +154,7 @@ impl Tile {
             let lck_val = self.locked.take().unwrap() as usize;
             self.blocking = false;
             self.ch = Some(DOOR_CHAR.with(get_door_clr()));
-            unsafe { crate::entity::KEYS_COLLECTED[lck_val] -= 1 }
+            unsafe { crate::entity::KEYS_COLLECTED[lck_val % entity::KEY_CLRS.len()] -= 1 }
             entity::LOG_MSGS
                 .write()
                 .unwrap()
@@ -163,7 +165,7 @@ impl Tile {
     /// Returns true if the corresponding key to the door has been collected.
     pub fn unlockable(&self) -> bool {
         if let Some(k) = self.locked
-            && unsafe { crate::entity::KEYS_COLLECTED[k as usize] > 0 }
+            && unsafe { crate::entity::KEYS_COLLECTED[k as usize % entity::KEY_CLRS.len()] > 0 }
         {
             true
         } else {
@@ -312,6 +314,8 @@ pub enum ActionType {
     Multi(Box<ActionType>, Box<ActionType>),
     /// Does the first action, and if it fails, does the second one.
     Chain(Box<ActionType>, Box<ActionType>),
+    /// Does the first action, and if it succeeds, does the second one.
+    Bridge(Box<ActionType>, Box<ActionType>),
     /// Invariably moves the action idx and does the action there.
     Jump(usize),
     /// Repeatedly does the contained action until it fails, then immediately does the next action.
@@ -342,6 +346,7 @@ impl fmt::Display for ActionType {
             Self::SummonMissile(dmg) => &format!("!{dmg}"),
             Self::Multi(a, b) => &format!("M({}{})", a, b),
             Self::Chain(a, b) => &format!("C({}{})", a, b),
+            Self::Bridge(a, b) => &format!("B({}{})", a, b),
             Self::Repeat(a) => &format!("R({a})"),
             Self::Jump(idx) => &format!("J{idx}"),
             _ => "?",

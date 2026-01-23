@@ -1,5 +1,9 @@
 use super::*;
 
+/// Required kills to unlock an enemy's description based on the start of their floor range.
+pub const KILL_REQS: [u32; crate::KILL_SCREEN] = [75, 50, 30, 20, 10, 1];
+pub const BOSS_KILL_REQ: u32 = 5;
+
 /// Stores multiple states that can be switched between.
 #[derive(Clone)]
 pub struct MultiBox {
@@ -54,7 +58,7 @@ impl MultiBox {
         desc: &str
     ) {
         let mut info_win = windowed::Window::new(self.screen_pos);
-        let cur_clr = crate::WALL_CLRS[((*meta.floor_rang.start() + *meta.floor_rang.end()) / 2) as usize];
+        let cur_clr = crate::WALL_CLRS[*meta.floor_rang.start() as usize];
         let outline_ch = '#'.with(cur_clr);
 
         let win_centre = Point::new(
@@ -163,7 +167,18 @@ impl MultiBox {
             info_win.data[Self::ATTACK_BOX_SIZE as usize + 1][x as usize] = outline_ch.clone();
         }
 
+        let kill_req = if temp.ch.content().is_ascii_uppercase() {
+            BOSS_KILL_REQ
+        } else {
+            KILL_REQS[*meta.floor_rang.start() as usize]
+        };
+
         // Display the description.
+        let desc = if kills >= kill_req {
+            desc
+        } else {
+            &format!("Kill {} more of these...", kill_req - kills)
+        };
         add_lines(
             desc,
             Self::DESC_POS,

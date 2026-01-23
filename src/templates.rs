@@ -10,6 +10,7 @@ pub const PLAYER_COLOUR: style::Color = style::Color::Green;
 pub const RING_CHARS: [char; 6] = ['╔', '═', '╗', '║', '╝', '╚'];
 pub const DIAG_CHARS: [char; 4] = ['╱', '╲', '╱', '╲'];
 pub const DIAG_ARROWS: [char; 8] = ['↙', '←', '↖', '↓', '↑', '↘', '→', '↗'];
+pub const WEIRD_ATK_CHAR: char = '☼';
 
 pub mod metadata;
 
@@ -193,13 +194,12 @@ pub fn get_explosion(dmg: u32, radius: i32, ch: StyleCh) -> MeleeAtk {
     )
 }
 
-/// Create a missile entity that moves in a single direction. Explodes if in proximity
-/// to the player at the start of its turn.
+/// Create a missile entity that moves in a single direction. Explodes on collision.
 pub fn get_missile(dir: Point, clr: style::Color, explosion: MeleeAtk) -> En {
     let mut atk_pat = AtkPat::empty();
     atk_pat.melee_atks.insert(Point::ORIGIN, vec![explosion]);
     En::new(
-        1,
+        2,
         false,
         vec![
             ActionType::Chain(
@@ -237,12 +237,7 @@ pub fn get_push_effect(collide_dmg: u32, push_strength: i32) -> Effect {
                     let mut write = LOG_MSGS.write().unwrap();
                     write.push(LogMsg::new(format!("{} collides with {ch}", e.ch.content())));
                     write.push(
-                        LogMsg::new(
-                            format!(
-                                "{PLAYER_CHARACTER} hp: {}/{}->{}/{}",
-                                old, e.hp.max, *e.hp, e.hp.max,
-                            )
-                        )
+                        LogMsg::hp_change(old, &e.hp, *e.ch.content())
                     );
                 }))]
             }
@@ -317,6 +312,19 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
 
     // Default attack pattern.
     let default_atks = get_default_atks(1, FOUR_POS_ATK, style::Color::Red);
+
+    // Attacks from a knight move away.
+    let mut knight_attacks = AtkPat::empty();
+    for &p in knight.iter() {
+        let fx = Vfx::new_opaque(WEIRD_ATK_CHAR.with(style::Color::Red), 7);
+        knight_attacks.melee_atks
+            .insert(p, vec![MeleeAtk::new(
+                vec![Effect::DoDmg(DmgInst::dmg(1, 1.0))],
+                vec![p],
+                vec![(p, fx)],
+                Vfx::new_opaque('?'.stylize(), 8)
+            )]);
+    }
 
     // Attack pattern for the i.
     let mut i_atks = default_atks.clone();
@@ -401,11 +409,27 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
         vec![get_ring_attack(2, style::Color::Red, 2, 9)],
     );
 
+    let mut small_ring = AtkPat::empty();
+    small_ring.melee_atks.insert(
+        Point::ORIGIN,
+        vec![get_ring_attack(2, style::Color::Red, 1, 7)],
+    );
+
+    let mut small_ring_fast = AtkPat::empty();
+    small_ring_fast.melee_atks.insert(
+        Point::ORIGIN,
+        vec![get_ring_attack(2, style::Color::Red, 1, 2)],
+    );
+
     // Functionally identical to default attacks, but looks different.
-    let weird_default = get_default_atks(1, ['☼'; 4], style::Color::Magenta);
+    let weird_default = get_default_atks(1, [WEIRD_ATK_CHAR; 4], style::Color::Magenta);
 
     // Default attack pattern with double damage and knockback.
     let heavy_default_atks = get_hvy_atks(2, THICC_FOUR_POS_ATK, style::Color::Red);
+
+    // Suicide bomb.
+    let mut bomb = AtkPat::empty();
+    bomb.melee_atks.insert(Point::ORIGIN, vec![get_explosion(2, 2, ' '.on(style::Color::Red))]);
 
     // Default attack pattern with diagonals included.
     let diagonal_atks = AtkPat::from_atks(MeleeAtk::bulk_new::<8>(
@@ -454,6 +478,37 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
     ));
 
     for (_d, atks) in wizardry.melee_atks.iter_mut() {
+        for atk in atks.iter_mut() {
+            let pos = atk.place[0];
+            atk.fx.push((pos * 2, Vfx::new_opaque('*'.magenta(), 7)));
+            for p in atk.place.iter_mut() {
+                *p = *p * 2;
+            }
+        }
+    }
+
+    // Swap with the target if they are two tiles away.
+    let mut swap = AtkPat::from_atks(MeleeAtk::bulk_new::<8>(
+        vec![Effect::Other(Box::new(|from, to, map| {
+            let mut slf = map.get_ent(from).unwrap().clone();
+            slf.acted = true;
+            unsafe { 
+                if to == PLAYER { 
+                    PLAYER = from;
+                }
+            }
+            vec![
+                bn::Cmd::new_on(to).move_to(from),
+                bn::Cmd::new_on(to).create_entity(slf)
+            ]
+        }))],
+        style::Color::Magenta,
+        7,
+        Vfx::new_opaque('?'.stylize(), 7),
+        EIGHT_POS_ATK
+    ));
+
+    for (_d, atks) in swap.melee_atks.iter_mut() {
         for atk in atks.iter_mut() {
             let pos = atk.place[0];
             atk.fx.push((pos * 2, Vfx::new_opaque('*'.magenta(), 7)));
@@ -567,6 +622,64 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
         cmds
     }
 
+    fn go_next(map: &bn::Map<En>, _en: &En, pos: Point) -> Vec<bandit::Cmd<En>> {
+        let pl = unsafe { PLAYER };
+        let mut possible = Vec::new();
+        for p in Point::ORIGIN.get_all_adjacent() {
+            let new = pl + p;
+            if !map.get_map(new).unwrap().blocking {
+                possible.push(new);
+            }
+        }
+        vec![
+            bn::Cmd::new_on(pos)
+                .move_to(*possible.choose(&mut rand::rng()).unwrap()),
+        ]
+    }
+    
+    fn triple_missile(
+        from: Point,
+        dmg: u32,
+        mut disp: Point,
+    ) -> Vec<bn::Cmd<En>> {
+        let mut cmds = Vec::new();
+        if disp.x.abs() == 1 {
+            disp.x = 0;
+        }
+        if disp.y.abs() == 1 {
+            disp.y = 0;
+        }
+        if disp.y != 0 {
+            disp.y /= disp.y.abs();
+        }
+        if disp.x != 0 {
+            disp.x /= disp.x.abs();
+        }
+
+        let disps = [disp, disp + disp.rotate_90_cw(), disp + disp.rotate_90_acw()];
+
+        for dir in disps {
+            cmds.push(bn::Cmd::new_on(from + dir).create_entity(get_missile(disp, style::Color::Red, get_explosion(dmg, 1, ' '.on_red()))));
+        }
+
+        cmds
+    }
+
+    let p_temp = EntityTemplate {
+        max_hp: 2,
+        actions: vec![
+            ActionType::Wait,
+            ActionType::Wait,
+            ActionType::Chain(
+                Box::new(ActionType::TryMelee),
+                Box::new(ActionType::Pathfind),
+            ),
+        ],
+        movement: manhattan2.clone(),
+        ch: 'p'.stylize(),
+        atks: diagonal_atks.clone(),
+    };
+
     (
         vec![
             EntityTemplate {
@@ -581,6 +694,24 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 movement: manhattan.clone(),
                 ch: 'e'.stylize(),
                 atks: default_atks.clone(),
+            },
+            EntityTemplate {
+                max_hp: 3,
+                actions: vec![
+                    ActionType::Wait,
+                    ActionType::Wait,
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                ],
+                movement: long_manhattan.clone(),
+                ch: 'f'.stylize(),
+                atks: diagonal_atks.clone(),
             },
             EntityTemplate {
                 max_hp: 4,
@@ -620,8 +751,21 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 atks: diagonal_atks.clone(),
             },
             EntityTemplate {
+                max_hp: 2,
+                actions: vec![
+                    ActionType::Wait,
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                ],
+                movement: knight.clone(),
+                ch: 'n'.stylize(),
+                atks: knight_attacks.clone(),
+            },
+            EntityTemplate {
                 max_hp: 3,
-                actions: vec![ActionType::Multi(
+                actions: vec![ActionType::Bridge(
                     Box::new(ActionType::Pathfind),
                     Box::new(ActionType::TryMelee),
                 )],
@@ -669,6 +813,7 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 atks: default_atks.clone(),
             },
             get_minion(),
+            p_temp.clone(),
             EntityTemplate {
                 max_hp: 2,
                 actions: vec![
@@ -686,6 +831,18 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 atks: i_atks.clone(),
             },
             EntityTemplate {
+                max_hp: 1,
+                actions: vec![
+                    ActionType::Flee(2),
+                    ActionType::Flee(2),
+                    ActionType::Flee(2),
+                    ActionType::SummonMissile(2),
+                ],
+                movement: manhattan.clone(),
+                ch: 'c'.stylize(),
+                atks: AtkPat::empty(),
+            },
+            EntityTemplate {
                 max_hp: 2,
                 actions: vec![
                     ActionType::Wait,
@@ -698,6 +855,18 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 movement: viking_move.clone(),
                 ch: 'v'.stylize(),
                 atks: viking_atk.clone(),
+            },
+            EntityTemplate {
+                max_hp: 1,
+                actions: vec![
+                    ActionType::TryMelee,
+                    ActionType::TryMelee,
+                    ActionType::TryMelee,
+                    ActionType::Pathfind,
+                ],
+                movement: manhattan23.clone(),
+                ch: 'd'.stylize(),
+                atks: small_ring_fast.clone(),
             },
             EntityTemplate {
                 max_hp: 2,
@@ -717,14 +886,65 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 atks: diagonal_atks.clone(),
             },
             EntityTemplate {
+                max_hp: 2,
+                actions: vec![
+                    ActionType::Wait,
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                ],
+                movement: fair_total.clone(),
+                ch: 't'.stylize(),
+                atks: swap.clone(),
+            },
+            EntityTemplate {
                 max_hp: 1,
-                actions: vec![ActionType::Chain(
-                    Box::new(ActionType::TryMelee),
-                    Box::new(ActionType::Pathfind),
-                )],
+                actions: vec![
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                    ActionType::Wait,
+                ],
                 movement: queen_move.clone(),
                 ch: 'q'.stylize(),
                 atks: spear.clone(),
+            },
+            EntityTemplate {
+                max_hp: 2,
+                actions: vec![
+                    ActionType::Wait,
+                    ActionType::Flee(1),
+                    ActionType::Multi(
+                        Box::new(ActionType::Pathfind),
+                        Box::new(ActionType::TryMelee),
+                    ),
+                ],
+                movement: fair_total.clone(),
+                ch: 'j'.stylize(),
+                atks: spear.clone(),
+            },
+            EntityTemplate {
+                max_hp: 1,
+                actions: vec![
+                    ActionType::Pathfind,
+                    ActionType::Bridge(
+                        Box::new(ActionType::Pathfind),
+                        Box::new(ActionType::TryMelee),
+                    )
+                ],
+                movement: diag.clone(),
+                ch: 'y'.stylize(),
+                atks: diagonal_atks.clone(),
             },
             EntityTemplate {
                 max_hp: 2,
@@ -748,6 +968,47 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 movement: manhattan.clone(),
                 ch: 's'.stylize(),
                 atks: AtkPat::empty(),
+            },
+            EntityTemplate {
+                max_hp: 1,
+                actions: vec![
+                    ActionType::Flee(3),
+                    ActionType::Flee(3),
+                    ActionType::Flee(3),
+                    ActionType::Flee(3),
+                    ActionType::Flee(3),
+                    ActionType::Summon(p_temp),
+                ],
+                movement: manhattan.clone(),
+                ch: 'm'.stylize(),
+                atks: AtkPat::empty(),
+            },
+            EntityTemplate {
+                max_hp: 1,
+                actions: vec![
+                    ActionType::Pathfind,
+                    ActionType::Wait,
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    )
+                ],
+                movement: manhattan2.clone(),
+                ch: 'u'.stylize(),
+                atks: bomb.clone(),
+            },
+            EntityTemplate {
+                max_hp: 2,
+                actions: vec![
+                    ActionType::Pathfind,
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    )
+                ],
+                movement: knight.clone(),
+                ch: 'z'.stylize(),
+                atks: get_holiness(2, 10).clone(),
             },
         ],
         // Capitals start here.
@@ -779,6 +1040,27 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 movement: manhattan.clone(),
                 ch: 'L'.stylize(),
                 atks: long_spear.clone(),
+            },
+            EntityTemplate {
+                max_hp: 3,
+                actions: vec![
+                    ActionType::Wait,
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                    ActionType::Chain(
+                        Box::new(ActionType::TryMelee),
+                        Box::new(ActionType::Pathfind),
+                    ),
+                ],
+                movement: knight.clone(),
+                ch: 'K'.stylize(),
+                atks: diagonal_atks.clone(),
             },
             EntityTemplate {
                 max_hp: 2,
@@ -816,6 +1098,27 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 atks: default_atks.clone(),
             },
             EntityTemplate {
+                max_hp: 2,
+                actions: vec![
+                    ActionType::Wait,
+                    ActionType::Flee(3),
+                    ActionType::Wait,
+                    ActionType::Multi(
+                        Box::new(ActionType::Pathfind),
+                        Box::new(ActionType::TryMelee),
+                    ),
+                    ActionType::Wait,
+                    ActionType::Multi(
+                        Box::new(ActionType::Pathfind),
+                        Box::new(ActionType::TryMelee),
+                    ),
+                    ActionType::Wait,
+                ],
+                movement: viking_move.clone(),
+                ch: 'V'.stylize(),
+                atks: viking_atk.clone(),
+            },
+            EntityTemplate {
                 max_hp: 4,
                 actions: vec![
                     ActionType::Wait,
@@ -850,22 +1153,9 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 atks: ring_atk.clone(),
             },
             EntityTemplate {
-                max_hp: 10,
+                max_hp: 6,
                 actions: vec![
-                    ActionType::Arbitrary(Box::new(|map, _en, pos| {
-                        let pl = unsafe { PLAYER };
-                        let mut possible = Vec::new();
-                        for p in Point::ORIGIN.get_all_adjacent() {
-                            let new = pl + p;
-                            if !map.get_map(new).unwrap().blocking {
-                                possible.push(new);
-                            }
-                        }
-                        vec![
-                            bn::Cmd::new_on(pos)
-                                .move_to(*possible.choose(&mut rand::rng()).unwrap()),
-                        ]
-                    })),
+                    ActionType::Arbitrary(Box::new(go_next)),
                     ActionType::ForceMelee(Point::ORIGIN, 0),
                     ActionType::ForceMelee(Point::ORIGIN, 1),
                     ActionType::ForceMelee(Point::ORIGIN, 2),
@@ -911,6 +1201,67 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                     ActionType::Arbitrary(Box::new(|map, _en, pos| {
                         fire_laser(pos, map, 3, '|'.red(), Point::new(0, 1))
                     })),
+                    ActionType::Wait,
+                    ActionType::Arbitrary(Box::new(|map, _en, pos| {
+                        let mut cmds = pl_to_wall(map, Point::new(-1, 0));
+                        cmds.push(
+                            bn::Cmd::new_on(pos).create_effect(Vfx::new_opaque('Ω'.white(), 9)),
+                        );
+                        cmds
+                    })),
+                    ActionType::Arbitrary(Box::new(|_map, _en, pos| {
+                        let disp = unsafe { PLAYER - pos };
+                        triple_missile(pos, 2, disp)
+                    })),
+                    ActionType::Arbitrary(Box::new(|map, _en, pos| {
+                        let mut cmds = pl_to_wall(map, Point::new(0, 1));
+                        cmds.push(
+                            bn::Cmd::new_on(pos).create_effect(Vfx::new_opaque('Ω'.white(), 9)),
+                        );
+                        cmds
+                    })),
+                    ActionType::Arbitrary(Box::new(|_map, _en, pos| {
+                        let disp = unsafe { PLAYER - pos };
+                        triple_missile(pos, 2, disp)
+                    })),
+                    ActionType::Arbitrary(Box::new(|map, _en, pos| {
+                        let mut cmds = pl_to_wall(map, Point::new(1, 0));
+                        cmds.push(
+                            bn::Cmd::new_on(pos).create_effect(Vfx::new_opaque('Ω'.white(), 9)),
+                        );
+                        cmds
+                    })),
+                    ActionType::Arbitrary(Box::new(|_map, _en, pos| {
+                        let disp = unsafe { PLAYER - pos };
+                        triple_missile(pos, 2, disp)
+                    })),
+                    ActionType::Arbitrary(Box::new(|map, _en, pos| {
+                        let mut cmds = pl_to_wall(map, Point::new(0, -1));
+                        cmds.push(
+                            bn::Cmd::new_on(pos).create_effect(Vfx::new_opaque('Ω'.white(), 9)),
+                        );
+                        cmds
+                    })),
+                    ActionType::Arbitrary(Box::new(|_map, _en, pos| {
+                        let disp = unsafe { PLAYER - pos };
+                        triple_missile(pos, 2, disp)
+                    })),
+                    ActionType::Arbitrary(Box::new(|map, _en, pos| {
+                        let mut cmds = pl_to_wall(map, Point::new(-1, 0));
+                        cmds.push(
+                            bn::Cmd::new_on(pos).create_effect(Vfx::new_opaque('Ω'.white(), 9)),
+                        );
+                        cmds
+                    })),
+                    ActionType::Arbitrary(Box::new(|_map, _en, pos| {
+                        let disp = unsafe { PLAYER - pos };
+                        triple_missile(pos, 2, disp)
+                    })),
+                    ActionType::Wait,
+                    ActionType::Wait,
+                    ActionType::Wait,
+                    ActionType::Wait,
+                    ActionType::Wait,
                 ],
                 movement: ring.clone(),
                 ch: 'Ω'.stylize(),

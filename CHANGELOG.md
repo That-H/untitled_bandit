@@ -1,3 +1,44 @@
+# 0.9.2-alpha
+Major content update.
+
+## New Features
+- Made the player regain two health after each floor.
+
+## New Content
+- Added a fifth floor with a small questline to reach it. 
+- Added a K and V.
+- Added c and n.
+- New Puzzles
+    - +2 Intermediate
+    - +2 Advanced
+    - +1 Extreme
+
+## Balance Changes
+- Moved various bosses to account for the new floor.
+    - R floor range 2-2 -> 3-3
+    - B floor range 2-2 -> 3-3
+    - O floor range 1-1 -> 2-2
+- Stopped a few basic enemies from spawning on floor 1.
+    - e floor range 0-1 -> 0-0
+    - h floor range 0-1 -> 0-0
+    - o floor range 0-1 -> 0-0
+- Lowered the cost of various enemies
+- Made the b unable to attack if it doesn't move first.
+- Made the q wait every third turn to make floor 3 more fair.
+
+## General Changes
+- Made ice now appear as cyan asterisks instead of asterisks on a cyan background, which was quite harsh on the eyes.
+- Changed the rng used internally to xoshiro256++ for portability purposes.
+- Changed the enemy budget formula to be (area of room + FLOOR\_NUM * 30)
+- Made enemies unable to spawn in the 5x5 boxes centred on each door.
+- No longer uses total turns for score calculation.
+- Killing enemies is rewarded more the higher the floor number is.
+- Added a screen between floors informing the player of some statistics of that floor and giving them the option to give up.
+- Changed the colours of floors 2 and 3 to dark yellow with green doors and blue gray.
+
+## Performance
+- Vastly improved gameplay performance by only drawing characters that actually changed since the last frame.
+
 # 0.9.1-alpha
 Content update with some slight alphabet visual changes.
 

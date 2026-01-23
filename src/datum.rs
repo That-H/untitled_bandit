@@ -1,4 +1,5 @@
 use std::ops::{self, Deref};
+use std::fmt;
 
 /// Stores a value and ensures it does not exceed a maximum.
 #[derive(Clone)]
@@ -38,7 +39,7 @@ impl<T: Clone + PartialOrd> Datum<T> {
         self.max = new_max;
     }
 
-    /// Return a reference to the current value stored.
+    /// Return a reference to the current value stored. Equivalent to deref, but more explicit.
     pub fn value(&self) -> &T {
         self.deref()
     }
@@ -47,6 +48,12 @@ impl<T: Clone + PartialOrd> Datum<T> {
 impl<T: Clone + PartialOrd> PartialEq<T> for Datum<T> {
     fn eq(&self, other: &T) -> bool {
         (**self) == *other
+    }
+}
+
+impl<T: Clone + PartialOrd + fmt::Display> fmt::Display for Datum<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.value().fmt(f)
     }
 }
 

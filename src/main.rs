@@ -8,6 +8,7 @@ use entity::*;
 use io::Read;
 use map_gen::bandit_gen::*;
 use rand::{Rng, SeedableRng};
+use untitled_bandit::templates::PLAYER_CHARACTER;
 use untitled_bandit::templates::metadata::TempMeta;
 use std::{collections::HashMap, fs, io, thread, time};
 use std::sync::LazyLock;
@@ -63,6 +64,7 @@ const PLAY: u32 = 3;
 const PLAY_SEEDED: u32 = 4;
 const PUZZLE_SELECT: u32 = 5;
 const NEXT_PUZZLE: u32 = 6;
+const END_RUN: u32 = 7;
 
 // Seed.
 static mut SEED: u64 = 0xFBAB693BEEFD53E4;
@@ -74,10 +76,6 @@ fn main() {
     // Get the path to this executable so that assets can be loaded even if the project is
     // downloaded from github.
     let this_path = get_assets_path();
-
-    // Rng used for map generation. Has to be separate to ensure determinism
-    // with the map and its contents.
-    let mut floor_rng;
 
     // Raw mode required for windowed to work correctly.
     terminal::enable_raw_mode();
@@ -178,26 +176,6 @@ fn main() {
     let mut handle = std::io::stdout();
     execute!(handle, cursor::Hide);
 
-    // Colours the text with the given colour and puts it into the window. Ensures at least len styled characters
-    // are contained within the line.
-    let add_line = |clr: style::Color,
-                    txt: &str,
-                    win: &mut windowed::Window<style::StyledContent<char>>,
-                    len: usize| {
-        let mut line = vec![' '.stylize()];
-        for ch in txt.chars() {
-            line.push(ch.with(clr));
-        }
-        let line_len = line.len();
-        if line_len < len {
-            for _ in 0..len - line_len {
-                line.push(' '.stylize());
-            }
-        }
-
-        win.data.push(line);
-    };
-
     // Display the current state of the map into the terminal.
     let display_map =
         |map: &bn::Map<En>, win_cont: &mut windowed::Container<style::StyledContent<char>>, stars_earned: &HashMap<u128, u8>| {
@@ -225,10 +203,17 @@ fn main() {
                 STATS_WID,
             );
             if unsafe { PUZZLE.is_none() } {
+                let flr = unsafe { 
+                    if FLOORS_CLEARED < 5 {
+                        FLOORS_CLEARED.to_string()
+                    } else {
+                        String::from("???")
+                    }
+                };
                 // Floor display.
                 add_line(
                     style::Color::Green,
-                    &format!("Floor {}", unsafe { FLOORS_CLEARED }),
+                    &format!("Floor {flr}"),
                     cur_win,
                     STATS_WID,
                 );
@@ -419,6 +404,7 @@ fn main() {
             GLOBAL_TIME = 0;
             COMBAT_TIME = 0;
             DAMAGE_DEALT = 0;
+            *CAN_F4.write().unwrap() = CHEATS;
 
             // Give a lot of keys on a debug build.
             let key_count = if CHEATS { 9 } else { 0 };
@@ -461,6 +447,7 @@ fn main() {
 
         clear_events();
 
+        // Contains general menu scenes.
         let mut menu_container = ui::UiContainer::new();
 
         let basic_button = ui::widgets::Button::empty_new()
@@ -662,7 +649,16 @@ fn main() {
             ),
             Point::new(-2, -1)
         );
-            
+        if collected as usize == max_stars {
+            pzl_scene.add_element(
+                Box::new(
+                    basic_button.clone()
+                        .set_txt(String::from("Press @f4 next run"))
+                        .set_screen_pos(Point::new(1, 1))
+                ),
+                Point::new(-3, -1)
+            );
+        } 
 
         // Last seen difficulty during puzzle screen generation.
         let mut last_diff = -1;
@@ -985,7 +981,7 @@ fn main() {
         main_wins.add_win(windowed::Window::new(PUZZLE_POS));
 
         // Seed the rng.
-        floor_rng = rand::rngs::SmallRng::seed_from_u64(unsafe { SEED });
+        let mut floor_rng = rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(unsafe { SEED });
 
         // Map used through the game.
         let mut map: bn::Map<En> = unsafe {
@@ -1011,10 +1007,77 @@ fn main() {
             }
         };
 
+        execute!(handle, terminal::Clear(terminal::ClearType::All));
         display_map(&map, &mut main_wins, &stars_earned);
+        let mut score = 0.0;
+        let mut f4_state = 0;
 
         'main: loop {
             ready = true;
+
+            let floor_win_len = 40;
+            let mut floor_end_wins = windowed::Container::new();
+            floor_end_wins.add_win(windowed::Window::new(Point::new((TERMINAL_WID / 2) as i32 - floor_win_len / 2, 12)));
+
+            let mut floor_end_ui = ui::UiContainer::new();
+
+            let mut scene = ui::Scene::new(Point::new(54, 20), 12, 5);
+
+            // Open the floor complete file.
+            let mut f = fs::File::open(this_path.join("floor_complete.txt")).unwrap();
+            let mut main_text = String::new();
+            f.read_to_string(&mut main_text);
+
+            let title = ui::widgets::Title::new(Point::new(2, 2), main_text, None);
+            scene.add_element(Box::new(title), Point::new(500, 500));
+
+            scene.add_element(
+                Box::new(
+                    basic_button
+                        .clone()
+                        .set_txt(String::from("Continue"))
+                        .set_events(vec![
+                            ui::Event::Broadcast(String::from("clr")),
+                            ui::Event::Exit(PLAY)
+                        ])
+                        .set_screen_pos(Point::new(1, 1)),
+                ),
+                Point::new(1, 1),
+            );
+            scene.add_element(
+                Box::new(
+                    basic_button
+                        .clone()
+                        .set_txt(String::from("End Run"))
+                        .set_event(ui::Event::Exit(END_RUN))
+                        .set_screen_pos(Point::new(1, 2)),
+                ),
+                Point::new(1, 2),
+            );
+            scene.add_element(
+                Box::new(
+                    basic_button
+                        .clone()
+                        .set_txt(String::from("Quit"))
+                        .set_event(ui::Event::Exit(QUIT))
+                        .set_screen_pos(Point::new(1, 3)),
+                ),
+                Point::new(1, 3),
+            );
+            scene.add_element(
+                Box::new(ui::widgets::Outline::new('#'.grey(), 12)),
+                Point::new(999, 999),
+            );
+            scene.move_cursor(Point::new(1, 1));
+
+            floor_end_ui.add_scene(scene);
+
+            // Necessary to know what occurred on each floor.
+            let mut killed = 0;
+            let mut time = 0;
+            let mut combat_time = 0;
+            let mut damage = 0;
+            let mut last_floor = start;
 
             if map.get_ent(unsafe { PLAYER }).unwrap().vel.is_none() {
                 while let event::Event::Key(ke) = event::read().expect("what") {
@@ -1034,9 +1097,6 @@ fn main() {
                             | event::KeyCode::Char('w')
                             | event::KeyCode::Char('k') => ActionType::TryMove(Point::new(0, 1)),
                             event::KeyCode::Char('.') => ActionType::Wait,
-                            event::KeyCode::Char('f') => ActionType::Fire(0),
-                            event::KeyCode::Char('g') => ActionType::Fire(1),
-                            event::KeyCode::Char('b') => ActionType::Fire(2),
                             // Skip to next floor.
                             event::KeyCode::Char('n') => unsafe {
                                 if CHEATS {
@@ -1127,6 +1187,19 @@ fn main() {
                                     continue;
                                 }
                             },
+                            // Super secret.
+                            event::KeyCode::Char('@') => {
+                                f4_state += 1;
+                                ActionType::Wait
+                            }
+                            event::KeyCode::Char('f') => {
+                                f4_state += 1000;
+                                ActionType::Wait
+                            }
+                            event::KeyCode::Char('4') => {
+                                f4_state += 1000000;
+                                ActionType::Wait
+                            }
                             event::KeyCode::Char('r') => {
                                 let read = LAST_DOOR.read().unwrap();
                                 let disp = unsafe {
@@ -1176,6 +1249,18 @@ fn main() {
                 || ready
             {
                 ready = false;
+                
+                // If you do the super secret thing, you are allowed to go to floor 4.
+                if f4_state == 1001001 {
+                    *CAN_F4.write().unwrap() = true;
+                    // Make the player red so they know they've done something good.
+                    let pl = map.get_ent_mut(unsafe { PLAYER }).unwrap();
+                    pl.ch = PLAYER_CHARACTER.with(style::Color::Red);
+                    pl.hp.change_max(5);
+                    LOG_MSGS.write().unwrap().push(LogMsg::new(format!("{PLAYER_CHARACTER} transcends")));
+                    f4_state = 2001001;
+                }
+
                 map.update();
                 display_map(&map, &mut main_wins, &stars_earned);
                 // thread::sleep(delay);
@@ -1185,16 +1270,53 @@ fn main() {
                     display_map(&map, &mut main_wins, &stars_earned);
                     thread::sleep(delay);
                 }
-                display_map(&map, &mut main_wins, &stars_earned);
-                if did_vfx {
-                    thread::sleep(vfx_delay);
+                if unsafe { !NEXT_FLOOR } {
+                    display_map(&map, &mut main_wins, &stars_earned);
+                    if did_vfx {
+                        thread::sleep(vfx_delay);
+                    }
                 }
                 unsafe {
+                    let mut brk = false;
+                    let mut full = false;
+
                     // Check if the player has died.
                     if map.get_ent(PLAYER).unwrap().is_dead() {
                         DEAD = true;
-                        break 'main;
+                        brk = true;
                     }
+                    
+                    // Statistics for this floor.
+                    let dk = KILLED - killed;
+                    let dt = GLOBAL_TIME - time;
+                    let dct = COMBAT_TIME - combat_time;
+                    let dd = DAMAGE_DEALT - damage;
+                    let real_time = time::Instant::now().duration_since(last_floor).as_secs();
+                
+                    // Efficiency.
+                    let mut cmb_efficiency = dd as f64 / dct as f64;
+
+                    if cmb_efficiency.is_nan() {
+                        cmb_efficiency = 0.0;
+                    }
+
+                    if NEXT_FLOOR || brk {
+                        killed = KILLED;
+                        time = GLOBAL_TIME;
+                        combat_time = COMBAT_TIME;
+                        damage = DAMAGE_DEALT;
+
+                        last_floor = time::Instant::now();
+
+                        let mut cur_score: f64 = (50 + (dk * 5 * (FLOORS_CLEARED / 2 + 1))) as f64 * cmb_efficiency;
+
+                        if cur_score.is_nan() {
+                            cur_score = 0.0;
+                        }
+                        
+                        score += cur_score;
+                    }
+
 
                     // Check if the player has left the floor.
                     if NEXT_FLOOR {
@@ -1202,7 +1324,14 @@ fn main() {
                             break 'main;
                         }
                         FLOORS_CLEARED += 1;
+                        if FLOORS_CLEARED == KILL_SCREEN as u32 - 2 {
+                            score += 500.0;
+                            if !*CAN_F4.read().unwrap() {
+                                break 'main;
+                            }
+                        } 
                         if FLOORS_CLEARED == KILL_SCREEN as u32 {
+                            score += 1000.0;
                             break 'main;
                         }
                         NEXT_FLOOR = false;
@@ -1214,22 +1343,105 @@ fn main() {
                             &templates,
                             &elites,
                         );
+
+                        let cur_win = &mut floor_end_wins.windows[0];
+
+                        // Real time taken.
+                        add_line(
+                            style::Color::White,
+                            &format!("Time Elapsed: {}:{:02}", real_time / 60, real_time % 60,),
+                            cur_win,
+                            floor_win_len as usize,
+                        );
+
+                        add_line(style::Color::White, &format!("Time Taken: {dt}"), cur_win, floor_win_len as usize);
+
+                        // Enemies killed.
+                        add_line(
+                            style::Color::White,
+                            &format!("Enemies Killed: {}", dk),
+                            cur_win,
+                            floor_win_len as usize,
+                        );
+
+                        add_line(
+                            style::Color::White,
+                            &format!("Combat Efficiency: {:.3}", cmb_efficiency),
+                            cur_win,
+                            floor_win_len as usize,
+                        );
+
+                        // Score.
+                        let mut score_msg = format!("Score: {score:.2}");
+
+                        if f64::max(score, high_score) == score {
+                            score_msg = format!("{score_msg} (New Highscore!)");
+                        } else {
+                            score_msg = format!("{score_msg} (Best: {high_score:.2})");
+                        }
+
+                        add_line(style::Color::White, &score_msg, cur_win, floor_win_len as usize);
+
+                        cur_win.outline_with('#'.grey());
+                        floor_end_wins.refresh();
+                        let _ = execute!(handle, terminal::Clear(terminal::ClearType::All));
+                        print_win(&floor_end_wins);
+
+                        match floor_end_ui.run() {
+                            PLAY => (),
+                            END_RUN => {
+                                DEAD = true;
+                                brk = true;
+                            },
+                            QUIT => {
+                                full = true;
+                            }
+                            _ => panic!("wtf"),
+                        }
+
+                        let _ = execute!(handle, terminal::Clear(terminal::ClearType::All));
+
+                        // Restore two health for getting past the boss.
+                        let pl = map.get_ent_mut(PLAYER).unwrap();
+                        let old = *pl.hp.value();
+                        pl.hp += 2;
+                        LOG_MSGS.write().unwrap().push(LogMsg::hp_change(old, &pl.hp, *pl.ch.content()));
+
                         display_map(&map, &mut main_wins, &stars_earned);
+                    }
+
+                    if brk {
+                        break 'main;
+                    } else if full {
+                        break 'full;
                     }
                 }
             }
 
             thread::sleep(delay);
         }
+
+        // Clear screen.
+        execute!(handle, terminal::Clear(terminal::ClearType::All));
+        
+        // See if we're doing a puzzle.
+        let is_puzzle = unsafe { PUZZLE.is_some() };
+
         // Death/win screen.
         let mut end_wins = windowed::Container::new();
+        let truely_won = unsafe { FLOORS_CLEARED == KILL_SCREEN as u32 };
 
         let main_wid = 38;
         let time_taken = time::Instant::now().duration_since(start).as_secs();
         let (fname, txt_pos) = if unsafe { DEAD } {
             ("death.txt", Point::new(3, 2))
         } else {
-            ("win.txt", Point::new(26, 2))
+            let p = Point::new(26, 2);
+            if truely_won || is_puzzle {
+                ("win.txt", p)
+            } else {
+                ("false_win.txt", p)
+            }
         };
         end_wins.add_win(windowed::Window::new(txt_pos));
         end_wins.add_win(windowed::Window::new(Point::new(40, 12)));
@@ -1248,9 +1460,10 @@ fn main() {
         clear_events();
 
         let cur_win = &mut end_wins.windows[1];
+        if truely_won {
+            add_line(style::Color::White, "THE VOID CONSUMES US ALL", cur_win, main_wid);
+        }
         add_line(style::Color::White, "", cur_win, main_wid);
-
-        let is_puzzle = unsafe { PUZZLE.is_some() };
 
         if !is_puzzle {
             // Real time taken.
@@ -1337,19 +1550,9 @@ fn main() {
         );
 
         if !is_puzzle {
-            let mut score =
-                unsafe { (FLOORS_CLEARED * 100 + 3 * KILLED).saturating_sub(GLOBAL_TIME / 50) }
-                    as f64
-                    * cmb_efficiency;
-
-            if score.is_nan() {
-                score = 0.0;
-            }
-
-            let old_high = high_score;
             high_score = f64::max(score, high_score);
             let mut score_msg = format!("Score: {score:.2}");
-            if old_high != high_score {
+            if score == high_score {
                 score_msg = format!("{score_msg} (New Highscore!)");
             } else {
                 score_msg = format!("{score_msg} (Best: {high_score:.2})");
@@ -1367,7 +1570,9 @@ fn main() {
             );
         }
 
-        add_line(style::Color::White, "", cur_win, main_wid);
+        if !truely_won {
+            add_line(style::Color::White, "", cur_win, main_wid);
+        }
 
         cur_win.outline_with('#'.grey());
         thread::sleep(time::Duration::from_millis(275));
@@ -1428,6 +1633,27 @@ fn clear_events() {
     }
 }
 
+/// Colours the text with the given colour and puts it into the window. Ensures at least len styled characters
+/// are contained within the line.
+fn add_line(clr: style::Color,
+    txt: &str,
+    win: &mut windowed::Window<style::StyledContent<char>>,
+    len: usize
+) {
+    let mut line = vec![' '.stylize()];
+    for ch in txt.chars() {
+        line.push(ch.with(clr));
+    }
+    let line_len = line.len();
+    if line_len < len {
+        for _ in 0..len - line_len {
+            line.push(' '.stylize());
+        }
+    }
+
+    win.data.push(line);
+}
+
 /// Checks some seeds for suspicousness. Returns true if any are sus.
 #[cfg(debug_assertions)]
 fn check_seeds(init_seed: u64, sds: u64) -> bool {
@@ -1438,7 +1664,7 @@ fn check_seeds(init_seed: u64, sds: u64) -> bool {
     let mut found_fault = false;
 
     for sd in init_seed..init_seed + sds {
-        let mut floor_rng = rand::rngs::SmallRng::seed_from_u64(sd);
+        let mut floor_rng = rand_xoshiro::Xoshiro256PlusPlus::seed_from_u64(sd);
         eprint!("Trying {sd:X}");
         eprint!("\r");
         gen_floor(&mut map, &mut floor_rng, 0, &meta, &templates, &elites);

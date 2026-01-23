@@ -115,24 +115,24 @@ pub fn ice_rect<R: Rng>(
     min_path_len: u16,
 ) {
     let rect = rects[id];
-    let mut tiles = HashMap::new();
+    let mut init_tiles = HashMap::new();
     let mut doors = Vec::new();
 
-    // Make sure the edges are all solid in the rect.
-    for p in rect.edges() {
+    for p in rect.cells() {
         if let Some(cl) = occupied.get(&p) {
-            tiles.insert(p, true);
-            if cl.is_door() {
-                doors.push(p);
+            match cl {
+                Cell::Wall(_ids) => { init_tiles.insert(p, true); },
+                Cell::Inner(_) => { init_tiles.insert(p, false); } 
+                Cell::Door(_, _) => { doors.push(p); },
+                _ => (),
             }
         }
     }
 
-    if doors.len() <= 1 {
+    // Minimum of two doors required.
+    if doors.len() < 2 {
         return;
     }
-
-    let init_tiles = tiles.clone();
 
     #[derive(PartialEq, Eq)]
     struct State {
@@ -152,12 +152,16 @@ pub fn ice_rect<R: Rng>(
         }
     }
 
+    let mut tiles = init_tiles.clone();
+
     'generator: loop {
         // Generate the random walls.
         tiles = init_tiles.clone();
 
         for p in rect.inner_cells() {
-            tiles.insert(p, rng.random_bool(wall_freq));
+            tiles.entry(p).and_modify(|b| if !*b { 
+                *b = rng.random_bool(wall_freq)
+            });
         }
 
         let nbrs = |pos: Point| {
@@ -411,7 +415,7 @@ pub fn add_ice<R: Rng>(
     ice_prevalence: f64,
     illegal_hosts: &[usize],
 ) {
-    for id in 1..rects.len() {
+    for id in 0..rects.len() {
         if illegal_hosts.contains(&id) {
             continue;
         }

@@ -4,8 +4,17 @@ Autonomous and artificial.
 b
 [bottom text]
 
+c
+Cowardly, but tries its best.
+
+d
+Does not feel remorse.
+
 e
 A lot like you.
+
+f
+Fights and falls just the same as the rest...
 
 g 
 Two of these spell ‘gg’.
@@ -16,14 +25,26 @@ Helpless most of the time.
 i
 Intends harm, but is rather insignificant.
 
+j
+Just runs away most of the time.
+
 k
 Knightly and kingly.
 
 l
 Does not like getting too close.
 
+m
+Makes mighty minions. 
+
+n
+Just knightly. Nothing else.
+
 o
 Obstruct its path and feel vengeance.
+
+p
+Powerful despite its autonomy.
 
 q
 Just a tribute.
@@ -32,7 +53,13 @@ r
 Rather rapid.
 
 s
-Suddenly summons small minions.
+Suddenly summons small servants.
+
+t
+Harmless, but thinks otherwise.
+
+u
+u wot
 
 v
 Very violent.
@@ -43,6 +70,9 @@ Wizardry.
 x
 Extremely capable of being a little annoying.
 
+y
+Yearns to be one king move away.
+
 z
 Zealous.
 
@@ -52,15 +82,21 @@ Get ready to receive some holy spirit!
 E
 Better than you.
 
+K
+Attacks often, but is not often attacked.
+
 L
 Likes even longer range.
 
 O
 You are always in its way.
 
+Q
+Is a queen.
+
 R
 Really wants to get you.
 
-Q
-Is a queen.
+V
+Violence is all it knows.
 

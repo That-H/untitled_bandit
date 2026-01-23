@@ -67,7 +67,7 @@ pub enum Event {
 pub struct Scene {
     elements: HashMap<Point, Box<dyn UiElement>>,
     cursor: Point,
-    win: windowed::Window<StyleCh>,
+    cont: windowed::Container<StyleCh>,
     wid: usize,
     hgt: usize,
     scrolling: bool,
@@ -77,10 +77,13 @@ pub struct Scene {
 impl Scene {
     /// Create an empty scene.
     pub fn new(top_left: Point, wid: usize, hgt: usize) -> Self {
+        let mut cont = windowed::Container::new();
+        cont.add_win(windowed::Window::new(top_left));
+
         Self {
             elements: HashMap::new(),
             cursor: Point::ORIGIN,
-            win: windowed::Window::new(top_left),
+            cont,
             wid,
             hgt,
             scrolling: false,
@@ -133,10 +136,10 @@ impl Scene {
 
     /// Draw the UI elements into the window.
     pub fn draw(&mut self) {
-        self.win.data.clear();
+        self.cont.windows[0].data.clear();
 
         for _ in 0..self.hgt {
-            self.win.data.push(vec![' '.stylize(); self.wid]);
+            self.cont.windows[0].data.push(vec![' '.stylize(); self.wid]);
         }
 
         let mut elems = Vec::new();
@@ -148,8 +151,10 @@ impl Scene {
         elems.sort_by_key(|e| e.priority());
 
         for elem in elems {
-            elem.display_into(&mut self.win, self.offset);
+            elem.display_into(&mut self.cont.windows[0], self.offset);
         }
+        
+        self.cont.refresh();
     }
 
     /// Toggle the hover state of the element at the given position if there is one. Returns true
@@ -228,16 +233,10 @@ impl UiContainer {
         'full: loop {
             let scene = self.cur_scene_mut();
             scene.draw();
+            let buf = scene.cont.get_buffer();
 
-            for (y, row) in scene.win.data.iter().enumerate() {
-                for (x, &ch) in row.iter().enumerate() {
-                    let p = Point::new(x as i32, y as i32) + scene.win.top_left;
-                    let _ = queue!(
-                        handle,
-                        cursor::MoveTo(p.x as u16, p.y as u16),
-                        style::Print(ch)
-                    );
-                }
+            for p in scene.cont.changed() {
+                let _ = queue!(handle, cursor::MoveTo(p.x as u16, p.y as u16), style::Print(buf[p]));
             }
 
             let _ = handle.flush();
@@ -291,17 +290,12 @@ impl UiContainer {
                                     match ev {
                                         Event::Exit(code) => return code,
                                         Event::ChangeScene(idx) => {
-                                            for (y, row) in scene.win.data.iter().enumerate() {
-                                                for (x, _) in row.iter().enumerate() {
-                                                    let p = Point::new(x as i32, y as i32)
-                                                        + scene.win.top_left;
-                                                    let _ = queue!(
-                                                        handle,
-                                                        cursor::MoveTo(p.x as u16, p.y as u16),
-                                                        style::Print(' ')
-                                                    );
-                                                }
+                                            // Hide the evidence when we change scene.
+                                            for p in scene.cont.changed() {
+                                                let _ = queue!(handle, cursor::MoveTo(p.x as u16, p.y as u16), style::Print(' '));
                                             }
+
+                                            let _ = handle.flush();
 
                                             new_idx = Some(idx);
                                         }

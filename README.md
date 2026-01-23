@@ -98,8 +98,8 @@ entering text, press 'esc' or 'enter'.
 
 The github repository contains, in the target/release/ folder, an optimised executable file that runs the game. It requires some assets located
 in the folder of the same name, so it is recommended to download the entire project as a zip file and directly run the executable from the relevant
-subfolder after extracting the zip (or clone the repository with git if you know how). Alternatively, you can build the game from the source code 
-and run the resulting binary. See [Building From Source](#Building-From-Source)
+subfolder after extracting the zip (or clone the repository with git if you know how, which you probably do as you are on GitHub). Alternatively, 
+you can build the game from the source code and run the resulting binary. See [Building From Source](#Building-From-Source)
 
 ## Dependencies
 
