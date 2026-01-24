@@ -149,6 +149,7 @@ fn main() {
         Err(why) => panic!("{why}"),
     };
     let mut stars_earned = HashMap::new();
+    let mut normal_puzzles = 0;
 
     // Discard any data about non existent puzzles.
     for pzl in &pzls {
@@ -160,6 +161,9 @@ fn main() {
                 0
             },
         );
+        if (pzl.diff as u8) < 4 {
+            normal_puzzles += 1;
+        }
     }
     let pzl_count = pzls.len();
 
@@ -168,6 +172,15 @@ fn main() {
         Ok(score) => score,
         Err(why) => match why {
             puzzle_loader::LoadErr::NotFound => 0.0,
+            _ => panic!("{why}"),
+        },
+    };
+
+    // Load whether we have won yet.
+    let mut won_yet = match save_file::load_won() {
+        Ok(won) => won,
+        Err(why) => match why {
+            puzzle_loader::LoadErr::NotFound => false,
             _ => panic!("{why}"),
         },
     };
@@ -631,7 +644,7 @@ fn main() {
         pzl_scene.add_element(Box::new(title), Point::new(500, 500));
 
         // Add an indicator for total stars collected.
-        let max_stars = stars_earned.len() * 2;
+        let max_stars = if won_yet { pzls.len() } else { normal_puzzles } * 2;
         let collected = stars_earned.values().copied().sum::<u8>();
         pzl_scene.add_element(
             Box::new(
@@ -664,7 +677,7 @@ fn main() {
         let mut last_diff = -1;
 
         for (n, pzl) in pzls.iter().enumerate() {
-            let pos = Point::new(1, n as i32 + 2);
+            let mut pos = Point::new(1, n as i32 + 2);
             let mut screen_pos = pos + Point::new(0, last_diff + 4);
             let strs = if let Some(s) = stars_earned.get(&pzls[n].id) {
                 *s
@@ -683,35 +696,40 @@ fn main() {
                     1 => style::Color::Yellow,
                     2 => style::Color::Red,
                     3 => style::Color::DarkRed,
+                    4 => style::Color::DarkMagenta,
                     d => panic!("Unexpected difficulty '{d}'"),
                 };
+                if this_diff < 4 || won_yet {
+                    pzl_scene.add_element(
+                        Box::new(
+                            basic_button
+                                .clone()
+                                .set_txt(format!("{}", pzl.diff))
+                                .set_clr(clr)
+                                .set_screen_pos(screen_pos),
+                        ),
+                        pos + Point::new(500, 5),
+                    );
+                    screen_pos.y += 1;
+                }
+            }
 
+            if this_diff < 4 || won_yet {
                 pzl_scene.add_element(
                     Box::new(
                         basic_button
                             .clone()
-                            .set_txt(format!("{}", pzl.diff))
-                            .set_clr(clr)
+                            .set_txt(format!("Puzzle {} {str1}{str2}", n + 1))
+                            .set_event(ui::Event::Exit(n as u32 + 100))
                             .set_screen_pos(screen_pos),
                     ),
-                    pos + Point::new(500, 5),
+                    pos,
                 );
-                screen_pos.y += 1;
+                pos = pos + Point::new(0, 1);
             }
 
-            pzl_scene.add_element(
-                Box::new(
-                    basic_button
-                        .clone()
-                        .set_txt(format!("Puzzle {} {str1}{str2}", n + 1))
-                        .set_event(ui::Event::Exit(n as u32 + 100))
-                        .set_screen_pos(screen_pos),
-                ),
-                pos,
-            );
-
             // Add a main menu button.
-            if n == pzls.len() - 1 {
+            if n == pzls.len() - 1 || (!won_yet && last_diff == 4) {
                 pzl_scene.add_element(
                     Box::new(
                         basic_button
@@ -723,8 +741,9 @@ fn main() {
                             ])
                             .set_screen_pos(screen_pos + Point::new(0, 2)),
                     ),
-                    pos + Point::new(0, 1),
+                    pos 
                 );
+                break
             }
         }
         pzl_scene.add_element(
@@ -1430,6 +1449,9 @@ fn main() {
         // Death/win screen.
         let mut end_wins = windowed::Container::new();
         let truely_won = unsafe { FLOORS_CLEARED == KILL_SCREEN as u32 };
+        if truely_won {
+            won_yet = true;
+        }
 
         let main_wid = 38;
         let time_taken = time::Instant::now().duration_since(start).as_secs();
@@ -1613,6 +1635,9 @@ fn main() {
 
     // Write kill counts to file.
     save_file::save_kills(&*KILL_COUNTS.read().unwrap());
+
+    // Write whether we have won yet to the file.
+    save_file::save_won(won_yet);
 
     // Put the terminal in a "normal" state in case the player actually wants to use it afterwards.
     terminal::disable_raw_mode();

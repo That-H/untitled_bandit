@@ -19,6 +19,7 @@ pub enum Difficulty {
     Intermediate,
     Advanced,
     Extreme,
+    Bonus,
 }
 
 impl fmt::Display for Difficulty {
@@ -31,6 +32,7 @@ impl fmt::Display for Difficulty {
                 Self::Intermediate => "Intermediate",
                 Self::Advanced => "Advanced",
                 Self::Extreme => "Extreme",
+                Self::Bonus => "Bonus",
             }
         )
     }
@@ -45,6 +47,7 @@ impl FromStr for Difficulty {
             "I" => Self::Intermediate,
             "A" => Self::Advanced,
             "E" => Self::Extreme,
+            "b" => Self::Bonus,
             _ => return Err(()),
         })
     }
@@ -91,7 +94,7 @@ pub struct Puzzle {
     pub diff: Difficulty,
     /// Maximum number of moves allowed to complete the puzzle and get two stars.
     pub move_lim: u32,
-    /// Unique puzzle identifier.
+    /// The (extremely likely to be) unique puzzle identifier.
     pub id: u128,
 }
 

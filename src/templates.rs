@@ -9,6 +9,7 @@ pub const PLAYER_CHARACTER: char = '@';
 pub const PLAYER_COLOUR: style::Color = style::Color::Green;
 pub const RING_CHARS: [char; 6] = ['╔', '═', '╗', '║', '╝', '╚'];
 pub const DIAG_CHARS: [char; 4] = ['╱', '╲', '╱', '╲'];
+pub const ELBOWS: [char; 4] = ['└', '┘', '┐', '┌'];
 pub const DIAG_ARROWS: [char; 8] = ['↙', '←', '↖', '↓', '↑', '↘', '→', '↗'];
 pub const WEIRD_ATK_CHAR: char = '☼';
 
@@ -316,12 +317,35 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
     // Attacks from a knight move away.
     let mut knight_attacks = AtkPat::empty();
     for &p in knight.iter() {
-        let fx = Vfx::new_opaque(WEIRD_ATK_CHAR.with(style::Color::Red), 7);
+        let mut fx = Vec::new();
+        let (init_dir, last_dir) = if p.x.abs() > p.y.abs() {
+            (Point::new(p.x, 0), Point::new(0, p.y))
+        } else {
+            (Point::new(0, p.y), Point::new(p.x, 0))
+        };
+        let half_init = init_dir / 2;
+        fx.push((half_init, Vfx::new_opaque(FOUR_POS_ATK[last_dir.dir()].red(), 7)));
+        fx.push((p, Vfx::new_opaque(FOUR_POS_ATK[half_init.dir()].red(), 7)));
+        let mut elb_idx = match half_init + last_dir {
+            Point { x: 1, y: 1 } => 1,
+            Point { x: -1, y: 1 } => 0,
+            Point { x: 1, y: -1 } => 2,
+            Point { x: -1, y: -1 } => 3,
+            _ => unreachable!(),
+        };
+        if half_init.y != 0 {
+            elb_idx += 2;
+            if elb_idx > 3 {
+                elb_idx -= 4;
+            }
+        }
+        fx.push((init_dir, Vfx::new_opaque(ELBOWS[elb_idx].red(), 7)));
+
         knight_attacks.melee_atks
             .insert(p, vec![MeleeAtk::new(
                 vec![Effect::DoDmg(DmgInst::dmg(1, 1.0))],
                 vec![p],
-                vec![(p, fx)],
+                fx,
                 Vfx::new_opaque('?'.stylize(), 8)
             )]);
     }
@@ -502,7 +526,7 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 bn::Cmd::new_on(to).create_entity(slf)
             ]
         }))],
-        style::Color::Magenta,
+        style::Color::Yellow,
         7,
         Vfx::new_opaque('?'.stylize(), 7),
         EIGHT_POS_ATK
@@ -511,7 +535,7 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
     for (_d, atks) in swap.melee_atks.iter_mut() {
         for atk in atks.iter_mut() {
             let pos = atk.place[0];
-            atk.fx.push((pos * 2, Vfx::new_opaque('*'.magenta(), 7)));
+            atk.fx.push((pos * 2, Vfx::new_opaque('*'.yellow(), 7)));
             for p in atk.place.iter_mut() {
                 *p = *p * 2;
             }
@@ -924,7 +948,7 @@ pub fn get_templates() -> (Vec<EntityTemplate>, Vec<EntityTemplate>) {
                 actions: vec![
                     ActionType::Wait,
                     ActionType::Flee(1),
-                    ActionType::Multi(
+                    ActionType::Bridge(
                         Box::new(ActionType::Pathfind),
                         Box::new(ActionType::TryMelee),
                     ),

@@ -1,3 +1,13 @@
+# 0.9.2-beta
+Adds some finishing touches.
+
+## New Content
+- Added 5 bonus puzzles.
+
+## General Changes
+- Made the attack of the n more clear.
+- Moved one advanced puzzle to intermediate.
+
 # 0.9.2-alpha
 Major content update.
 

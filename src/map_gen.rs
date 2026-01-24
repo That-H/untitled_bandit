@@ -455,26 +455,24 @@ pub fn cut_corners<R: Rng>(rect: &Rect, occupied: &mut HashMap<Point, Cell>, rng
 
     while let Some(mrk) = marked.pop_front() {
         iters += 1;
-        let mut denom = iters / 2;
+        let mut denom = iters;
         if denom == 0 {
             denom = 1;
         }
-        let prolif = rng.random_ratio(1, denom);
-        if prolif {
-            if relevant.iter().all(|&p| {
-                if let Some(cl) = occupied.get(&(p + mrk)) && (cl.is_door() || cl.is_ice()) {
-                    false
-                } else {
-                    true
-                }
-            }) {
-                slash(mrk, occupied);
-                for p in mrk.get_all_adjacent() {
-                    if let Some(cl) = occupied.get(&p) && cl.is_wall() {
-                        marked.push_back(p);
-                    }
+        if relevant.iter().all(|&p| {
+            if let Some(cl) = occupied.get(&(p + mrk)) && (cl.is_door() || cl.is_ice()) {
+                false
+            } else {
+                true
+            }
+        }) {
+            slash(mrk, occupied);
+            for p in mrk.get_all_adjacent() {
+                let prolif = rng.random_ratio(1, denom + 1);
+                if prolif && let Some(cl) = occupied.get(&p) && cl.is_wall() {
+                    marked.push_back(p);
                 }
             }
-        } 
+        }
     }
 }

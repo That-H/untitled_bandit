@@ -466,7 +466,7 @@ checksum = "f6ccf251212114b54433ec949fd6a7841275f9ada20dddd2f29e9ceea4501493"
 
 [[package]]
 name = "untitled_bandit"
-version = "0.9.2-alpha"
+version = "0.9.2-beta"
 dependencies = [
  "bandit",
  "crossterm",

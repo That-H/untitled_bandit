@@ -55,7 +55,7 @@ pub fn get_metadata() -> HashMap<char, TempMeta> {
             TempMeta {
                 cost: 40,
                 floor_rang: 4..=4,
-                max: 2,
+                max: 1,
             },
         ),
         (

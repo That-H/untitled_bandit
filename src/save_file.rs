@@ -8,6 +8,7 @@ use std::{
 
 const SCORE_FILE: &str = "high_score.txt";
 const KILLS_FILE: &str = "kills.txt";
+const WON_YET_FILE: &str = "won_yet.txt";
 
 /// Get the high score from the save file.
 pub fn load_highscore() -> Result<f64, LoadErr> {
@@ -49,6 +50,43 @@ pub fn save_highscore(new_score: f64) {
         .expect("Unable to write high score");
 }
 
+/// Get whether we have won yet from the save file.
+pub fn load_won() -> Result<bool, LoadErr> {
+    if let Some(ln) = read_lines(get_save_path().join(WON_YET_FILE))
+        .map_err(|e| match e.kind() {
+            io::ErrorKind::NotFound => LoadErr::NotFound,
+            io::ErrorKind::ResourceBusy => {
+                LoadErr::Cant(String::from("the file is already in use"))
+            }
+            e => LoadErr::Other(e),
+        })?
+        .map_while(Result::ok)
+        .next()
+    {
+        return Ok(match &ln as &str {
+            "yes" => true,
+            "no" => false,
+            _ => false,
+        });
+    }
+
+    // No data saved yet.
+    Ok(false)
+}
+
+/// Save the high score to the file.
+pub fn save_won(new_status: bool) {
+    let save = get_save_path();
+
+    fs::create_dir_all(&save).expect("Couldn't create directories");
+    let mut file = io::BufWriter::new(
+        fs::File::create(save.join(WON_YET_FILE)).expect("Unable to write save file"),
+    );
+
+    let txt = if new_status { "yes" } else { "no" };
+    file.write_all(txt.as_bytes())
+        .expect("Unable to write won status");
+}
 /// Get the kill counts from the file.
 pub fn load_kills() -> Result<HashMap<char, u32>, LoadErr> {
     let mut kills = HashMap::new();
