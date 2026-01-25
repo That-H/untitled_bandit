@@ -1130,7 +1130,7 @@ fn main() {
                                 }
                             },
                             // Turn on no clip.
-                            event::KeyCode::Char('c') => {
+                            event::KeyCode::Char('C') => {
                                 if CHEATS {
                                     let clipping = *NO_CLIP.read().unwrap();
                                     *NO_CLIP.write().unwrap() = !clipping;
@@ -1218,6 +1218,16 @@ fn main() {
                             event::KeyCode::Char('4') => {
                                 f4_state += 1000000;
                                 ActionType::Wait
+                            }
+                            event::KeyCode::Char('c') => {
+                                let mut write = SEE_HEALTH.write().unwrap();
+                                let old = *write;
+                                *write = !old;
+
+                                // Have to kill it so that enemies don't poison the rwlock.
+                                drop(write);
+                                display_map(&map, &mut main_wins, &stars_earned);
+                                continue;
                             }
                             event::KeyCode::Char('r') => {
                                 let read = LAST_DOOR.read().unwrap();

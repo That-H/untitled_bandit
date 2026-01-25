@@ -54,6 +54,8 @@ pub static KILL_COUNTS: RwLock<LazyLock<HashMap<char, u32>>> = RwLock::new(LazyL
         },
     }
 }));
+/// Whether to display enemies as their letters or as their health value.
+pub static SEE_HEALTH: RwLock<bool> = RwLock::new(false);
 
 /// Contains the id of the puzzle if we are currently doing one. Not to be confused with a puzzle room.
 pub static mut PUZZLE: Option<usize> = None;
@@ -260,6 +262,11 @@ impl bn::Entity for En {
             if self.is_player || self.special == Special::Missile {
                 return self.ch;
             }
+            
+            if *SEE_HEALTH.read().unwrap() && self.special != Special::WallSentry {
+                return char::from_digit(*self.hp, 16).unwrap().red();
+            }
+            
             // Highlight if about to act.
             match self.actions.get(self.count).unwrap() {
                 ActionType::Wait | ActionType::Pathfind | ActionType::Flee(_) => self.ch,

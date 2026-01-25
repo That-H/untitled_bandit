@@ -1,3 +1,10 @@
+# 0.9.3-alpha
+Some puzzle solution optimisations and health visibility.
+
+## New Features
+- Pressing the letter c allows the player to see the current health of all enemies.
+- A license.
+
 # 0.9.2-beta
 Adds some finishing touches.
 

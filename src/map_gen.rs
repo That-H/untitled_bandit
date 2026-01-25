@@ -449,7 +449,7 @@ pub fn cut_corners<R: Rng>(rect: &Rect, occupied: &mut HashMap<Point, Cell>, rng
 
     // Tiles to be checked relative to one about to be slashed.
     let mut relevant = Point::ORIGIN.get_all_adjacent_diagonal();
-    for p in Rect::new(-2, 2, 5, 5).edges() {
+    for p in Rect::new(-3, 3, 7, 7).cells() {
         relevant.push(p);
     }
 
