@@ -1280,7 +1280,7 @@ fn main() {
                 ready = false;
                 
                 // If you do the super secret thing, you are allowed to go to floor 4.
-                if f4_state == 1001001 {
+                if f4_state == 1001001 && unsafe { FLOORS_CLEARED == 0 } {
                     *CAN_F4.write().unwrap() = true;
                     // Make the player red so they know they've done something good.
                     let pl = map.get_ent_mut(unsafe { PLAYER }).unwrap();

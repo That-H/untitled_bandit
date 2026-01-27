@@ -1,3 +1,12 @@
+# 1.0.0
+Full release.
+
+## Exploits
+- Fixed an exploit where a player could delay transcendence until floor 3.
+
+## Puzzles
+- Lowered the two star solution on various puzzles.
+
 # 0.9.3-alpha
 Some puzzle solution optimisations and health visibility.
 
