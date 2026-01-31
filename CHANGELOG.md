@@ -1,3 +1,13 @@
+# 1.0.1
+Balances floor 4.
+
+## Balance Changes
+- The player is now given all of their health and max health back upon reaching floor 4.
+- The player heals 1hp after every floor 4 room.
+
+## General Changes
+- Slightly increased the length of the ending cutscene.
+
 # 1.0.0
 Full release.
 

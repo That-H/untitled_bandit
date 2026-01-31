@@ -298,6 +298,16 @@ impl bn::Entity for En {
                                 KILLED += 1;
                             }
                             ENEMIES_REMAINING -= 1;
+                            
+                            // Heal the player 1hp upon clearing a floor 4 room.
+                            if ENEMIES_REMAINING == 0 && FLOORS_CLEARED == 4 { 
+                                cmd.queue(bn::Cmd::new_on(PLAYER).modify_entity(Box::new(|e: &mut En| {
+                                    let old = *e.hp;
+                                    e.hp.set_to(old + 1);
+
+                                    LOG_MSGS.write().unwrap().push(LogMsg::hp_change(old, &e.hp, *e.ch.content()));
+                                }))); 
+                            }
                         }
                     }
 
@@ -318,7 +328,7 @@ impl bn::Entity for En {
                             rm_rect.wid -= 2;
                             rm_rect.hgt -= 2;
                         }
-                        let i = MAX_WIDTH / 2 + 2;
+                        let i = MAX_WIDTH / 2 + 4;
                         let mut fx = Vfx::new_opaque(cmd.get_ent(unsafe { PLAYER }).unwrap().repr(), 10 * i as usize);
                         fx.frames.append(&mut vec![Frame::Opaque(' '.stylize()); 120 - (10 * i as usize)]);
                         cmd.queue(bn::Cmd::new_on(Point::ORIGIN).create_effect(fx));

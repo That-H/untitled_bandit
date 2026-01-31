@@ -1357,7 +1357,13 @@ fn main() {
                             score += 500.0;
                             if !*CAN_F4.read().unwrap() {
                                 break 'main;
+                            } else {
+                                // Must've transcended, so give max health back.
+                                let pl = map.get_ent_mut(PLAYER).unwrap();
+                                pl.hp.change_max(9);
+                                pl.hp.set_to(9);
                             }
+
                         } 
                         if FLOORS_CLEARED == KILL_SCREEN as u32 {
                             score += 1000.0;
